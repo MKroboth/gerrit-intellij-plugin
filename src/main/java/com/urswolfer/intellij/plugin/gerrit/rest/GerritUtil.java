@@ -1,8 +1,8 @@
 /*
  * Copyright 2000-2011 JetBrains s.r.o.
  * Copyright 2013-2018 Urs Wolfer
- * Modified 2026 by Maximilian Kroboth: the change list asks for the commits it groups stacks by; the comments of every
- * patch set and file diffs are read.
+ * Modified 2026 by Maximilian Kroboth: the change list asks for the commits it groups stacks by; the comments and
+ * drafts of every patch set and file diffs are read.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -683,6 +683,27 @@ public final class GerritUtil {
         }, (Map<String, List<CommentInfo>> comments) -> {
             if (comments != null) {
                 consumer.consume(comments);
+            }
+        }, project);
+    }
+
+    /**
+     * The drafts on every patch set of a change, for what only counts them: a failure leaves the consumer uncalled,
+     * and is only logged.
+     */
+    public void getChangeDraftsQuietly(final int changeNr,
+                                       final Project project,
+                                       final Consumer<Map<String, List<CommentInfo>>> consumer) {
+        accessGerrit(() -> {
+            try {
+                return gerritApi(project).changes().id(changeNr).drafts();
+            } catch (RestApiException e) {
+                LOG.info("Drafts of change " + changeNr + " not loaded", e);
+                return null;
+            }
+        }, (Map<String, List<CommentInfo>> drafts) -> {
+            if (drafts != null) {
+                consumer.consume(drafts);
             }
         }, project);
     }

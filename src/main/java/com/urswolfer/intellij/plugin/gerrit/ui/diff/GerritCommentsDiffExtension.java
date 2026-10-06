@@ -1,6 +1,7 @@
 /*
  * Copyright 2026 Urs Wolfer
- * Modified 2026 by Maximilian Kroboth: loads the comments of earlier patch sets as well.
+ * Modified 2026 by Maximilian Kroboth: loads the comments of earlier patch sets as well, and puts a bar to publish the
+ * drafts above the diff.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,6 +27,7 @@ import com.intellij.diff.DiffExtension;
 import com.intellij.diff.FrameDiffTool;
 import com.intellij.diff.requests.DiffRequest;
 import com.intellij.diff.tools.fragmented.UnifiedDiffViewer;
+import com.intellij.diff.tools.util.base.DiffPanelBase;
 import com.intellij.diff.tools.util.base.DiffViewerBase;
 import com.intellij.diff.tools.util.base.DiffViewerListener;
 import com.intellij.diff.tools.util.side.OnesideTextDiffViewer;
@@ -61,6 +63,7 @@ import com.urswolfer.intellij.plugin.gerrit.ui.action.ToggleReviewedAction;
 import com.urswolfer.intellij.plugin.gerrit.util.GerritUserDataKeys;
 import com.urswolfer.intellij.plugin.gerrit.util.PathUtils;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -167,11 +170,16 @@ public class GerritCommentsDiffExtension extends DiffExtension {
             addActions(comments, editor);
         }
 
+        DraftsBar draftsBar = addDraftsBar(viewer, comments, project, changeInfo, selectedRevisionId);
+
         // a review publishes the drafts, and another account sees other drafts, or some at all; but only from the
         // server the diff came from, as another one has another change of the number
         String host = GerritProjectAccount.getInstance(project).getHost();
         Runnable reload = () -> {
             if (Objects.equals(host, GerritProjectAccount.getInstance(project).getHost())) {
+                if (draftsBar != null) {
+                    draftsBar.refresh();
+                }
                 reloadComments(comments, project, changeInfo, selectedRevisionId, baseRevision.isPresent());
                 loadEarlierComments(comments, project, changeInfo, selectedRevisionId, baseRevision, true);
             }
@@ -269,6 +277,24 @@ public class GerritCommentsDiffExtension extends DiffExtension {
                     }
                 });
         }
+    }
+
+    /**
+     * Above the editors of the viewer, as the platform's own notifications of a diff are; those are read from the
+     * request when the viewer is built, before an extension hears of it.
+     *
+     * TODO once the minimum IDE has DiffUtil.addNotification with a DiffNotificationProvider (2020.3 has not, 2026.2
+     * has): add the bar to the context where the diff is opened instead, and drop the top panel of the viewer.
+     */
+    @Nullable
+    private static DraftsBar addDraftsBar(FrameDiffTool.DiffViewer viewer, DiffComments comments, Project project,
+                                          ChangeInfo changeInfo, String selectedRevisionId) {
+        if (!(viewer.getComponent() instanceof DiffPanelBase)) return null;
+        DraftsBar bar = new DraftsBar(project, changeInfo, selectedRevisionId);
+        ((DiffPanelBase) viewer.getComponent()).setTopPanel(bar.getComponent());
+        comments.addDraftsListener(bar::refresh);
+        bar.refresh();
+        return bar;
     }
 
     /**

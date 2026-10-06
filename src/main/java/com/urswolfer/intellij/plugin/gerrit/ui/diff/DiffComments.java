@@ -1,7 +1,7 @@
 /*
  * Copyright 2026 Urs Wolfer
  * Modified 2026 by Maximilian Kroboth: a "+" in the gutter starts a comment, Previous and Next under each thread walk
- * the comments, and the threads of earlier patch sets show on the newer side.
+ * the comments, the threads of earlier patch sets show on the newer side, and saving or removing a draft is announced.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -94,6 +94,8 @@ final class DiffComments {
     private final Map<EditorEx, Disposable> gutterIcons = new HashMap<>();
     // by revision, those whose comments show on the newer side as well
     private final Map<String, EarlierPatchSet> earlierPatchSets = new HashMap<>();
+    // told when a draft was saved or removed here, which changes how many the change has
+    private final List<Runnable> draftsListeners = new ArrayList<>();
     private int localChanges;
     // in the order the icons are added in, each to the left of those on its line already
     private final List<ShownComment> comments = new ArrayList<>();
@@ -267,12 +269,17 @@ final class DiffComments {
             editor.getDocument().getLineCount() - 1);
     }
 
+    void addDraftsListener(Runnable listener) {
+        draftsListeners.add(listener);
+    }
+
     /** A comment saved just now, which replaces the one with its id, as an edited draft does. */
     private void add(Comment comment, CommentSide side) {
         localChanges++;
         comments.removeIf(entry -> entry.comment.id != null && entry.comment.id.equals(comment.id));
         comments.add(entry(comment, side));
         render();
+        draftsListeners.forEach(Runnable::run);
     }
 
     /** The comments of a side as loaded again, in place of those there were. */
@@ -333,6 +340,7 @@ final class DiffComments {
         localChanges++;
         comments.removeIf(entry -> commentId.equals(entry.comment.id));
         render();
+        draftsListeners.forEach(Runnable::run);
     }
 
     /**
