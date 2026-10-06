@@ -23,8 +23,11 @@ import com.urswolfer.intellij.plugin.gerrit.GerritBundle;
  */
 public enum ChangeGrouping {
     NONE("group.none"),
+    STACK("group.stack"),
     TOPIC("group.topic"),
-    STACK("group.stack");
+    ISSUE("group.issue"),
+    HASHTAG("group.hashtag"),
+    OWNER("group.owner");
 
     private final String labelKey;
 

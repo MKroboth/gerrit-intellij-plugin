@@ -29,6 +29,7 @@ import com.intellij.openapi.actionSystem.CommonShortcuts;
 import com.intellij.openapi.actionSystem.ex.ActionUtil;
 import com.intellij.openapi.actionSystem.DataKey;
 import com.intellij.openapi.actionSystem.DataProvider;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.options.ShowSettingsUtil;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
@@ -96,6 +97,8 @@ public class GerritChangeListPanel extends JPanel implements DataProvider {
     public static final DataKey<ChangeInfo> SELECTED_CHANGE = DataKey.create("Gerrit.SelectedChange");
     /** The columns which can be shown or hidden, in their order in the table. */
     public static final DataKey<List<GerritChangeColumns.ColumnToggle>> COLUMNS = DataKey.create("Gerrit.Columns");
+
+    private static final int MAX_GROUPED_CHANGES = 500;
 
     private final Project project;
     private final SelectedRevisions selectedRevisions;
@@ -217,6 +220,7 @@ public class GerritChangeListPanel extends JPanel implements DataProvider {
                 listedQuery = query;
                 listedProxy = proxy;
                 setChanges(changeInfos);
+                loadRestForGroups();
                 setupEmptyTableHint(ChangeListEmptyText.of(lookup, filtersNarrowed));
                 // at its current patch set, which reviews and the other actions go to
                 if (lookup && changeInfos.size() == 1) {
@@ -479,6 +483,7 @@ public class GerritChangeListPanel extends JPanel implements DataProvider {
         this.changes.addAll(changes);
         if (grouping != ChangeGrouping.NONE) {
             updateRows();
+            loadRestForGroups();
             return;
         }
         // did not find another way to update the scrollbar after adding more changes...
@@ -516,6 +521,24 @@ public class GerritChangeListPanel extends JPanel implements DataProvider {
             replacingChanges = false;
         }
         reselect(previouslySelected);
+        loadRestForGroups();
+    }
+
+    /**
+     * Groups are wrong while part of the list is still on the server: a stack lacks its middle and shows as two. So
+     * while grouped, the list loads the rest of its pages, up to a bound. The next page is asked for after the proxy
+     * has handed out this one, as it skips a request while a load is running.
+     */
+    private void loadRestForGroups() {
+        LoadChangesProxy proxy = loadChangesProxy;
+        if (grouping == ChangeGrouping.NONE || proxy == null || changes.size() >= MAX_GROUPED_CHANGES) {
+            return;
+        }
+        ApplicationManager.getApplication().invokeLater(() -> proxy.getNextPage(more -> {
+            if (proxy == loadChangesProxy) {
+                addChanges(more);
+            }
+        }));
     }
 
     private boolean isGroupRow(int row) {
@@ -562,9 +585,7 @@ public class GerritChangeListPanel extends JPanel implements DataProvider {
     }
 
     private List<ChangeInfo> buildRows() {
-        List<ChangeGroups.Group> groups = grouping == ChangeGrouping.TOPIC
-            ? ChangeGroups.byTopic(changes)
-            : ChangeGroups.byStack(changes);
+        List<ChangeGroups.Group> groups = groupsOf(changes);
         List<ChangeInfo> rows = new ArrayList<>();
         stackPositions.clear();
         for (ChangeGroups.Group group : groups) {
@@ -581,6 +602,21 @@ public class GerritChangeListPanel extends JPanel implements DataProvider {
             }
         }
         return rows;
+    }
+
+    private List<ChangeGroups.Group> groupsOf(List<ChangeInfo> changes) {
+        switch (grouping) {
+            case TOPIC:
+                return ChangeGroups.byTopic(changes);
+            case ISSUE:
+                return ChangeGroups.byIssue(changes);
+            case HASHTAG:
+                return ChangeGroups.byHashtag(changes);
+            case OWNER:
+                return ChangeGroups.byOwner(changes);
+            default:
+                return ChangeGroups.byStack(changes);
+        }
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
