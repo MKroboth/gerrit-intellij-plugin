@@ -1,6 +1,7 @@
 /*
  * Copyright 2013 Urs Wolfer
  * Copyright 2000-2013 JetBrains s.r.o.
+ * Modified 2026 by Maximilian Kroboth: adds "Group by" to the toolbar of the change list.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -222,6 +223,8 @@ public class GerritToolWindow implements Disposable {
         for (ChangesFilter filter : filters) {
             filterGroup.add(filter.getAction(project));
         }
+        filterGroup.add(new Separator());
+        filterGroup.add(new GroupByAction(changeListPanel));
         filterGroup.add(new Separator());
         group.add(filterGroup, Constraints.FIRST);
 

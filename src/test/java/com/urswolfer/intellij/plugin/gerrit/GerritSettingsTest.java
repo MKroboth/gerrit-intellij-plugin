@@ -1,8 +1,9 @@
-// Modified 2026 by Maximilian Kroboth: covers the setting for comments shown in place in the diff.
+// Modified 2026 by Maximilian Kroboth: covers the settings for comments in place and for grouping changes.
 package com.urswolfer.intellij.plugin.gerrit;
 
 import com.intellij.util.xmlb.SkipDefaultsSerializationFilter;
 import com.intellij.util.xmlb.XmlSerializer;
+import com.urswolfer.intellij.plugin.gerrit.ui.ChangeGrouping;
 import com.urswolfer.intellij.plugin.gerrit.ui.ShowProjectColumn;
 import org.jdom.Attribute;
 import org.jdom.Element;
@@ -143,6 +144,18 @@ public class GerritSettingsTest {
         state.commentsInPlace = false;
 
         Assert.assertFalse(deserialize(new org.jdom.output.XMLOutputter().outputString(serialize(state))).commentsInPlace);
+    }
+
+    @Test
+    public void testChangesAreUngroupedUntilGrouped() throws Exception {
+        Assert.assertEquals(deserialize(LEGACY_SETTINGS_XML).groupChangesBy, ChangeGrouping.NONE);
+
+        GerritSettings.SettingsState state = new GerritSettings.SettingsState();
+        state.groupChangesBy = ChangeGrouping.STACK;
+
+        Assert.assertEquals(
+            deserialize(new org.jdom.output.XMLOutputter().outputString(serialize(state))).groupChangesBy,
+            ChangeGrouping.STACK);
     }
 
     /**

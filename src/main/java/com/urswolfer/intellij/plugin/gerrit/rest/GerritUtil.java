@@ -1,7 +1,8 @@
 /*
  * Copyright 2000-2011 JetBrains s.r.o.
  * Copyright 2013-2018 Urs Wolfer
- * Modified 2026 by Maximilian Kroboth: saving and deleting a draft comment can report a failure to the caller.
+ * Modified 2026 by Maximilian Kroboth: saving and deleting a draft comment can report a failure to the caller;
+ * the change list asks for the commits it groups stacks by.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -365,6 +366,7 @@ public final class GerritUtil {
                     Changes.QueryRequest queryRequest = gerritApi().changes().query(query)
                             .withOptions(EnumSet.of(
                                 ListChangesOption.ALL_REVISIONS,
+                                ListChangesOption.CURRENT_COMMIT,
                                 ListChangesOption.DETAILED_ACCOUNTS,
                                 ListChangesOption.CHANGE_ACTIONS,
                                 ListChangesOption.CURRENT_ACTIONS,

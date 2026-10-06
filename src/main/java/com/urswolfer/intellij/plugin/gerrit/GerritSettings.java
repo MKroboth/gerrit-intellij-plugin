@@ -1,7 +1,7 @@
 /*
  * Copyright 2000-2012 JetBrains s.r.o.
  * Copyright 2013 Urs Wolfer
- * Modified 2026 by Maximilian Kroboth: adds the setting for comments shown in place in the diff.
+ * Modified 2026 by Maximilian Kroboth: adds the settings for comments in place and for grouping changes.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ import com.intellij.util.xmlb.Converter;
 import com.intellij.util.xmlb.annotations.Attribute;
 import com.intellij.util.xmlb.annotations.Property;
 import com.urswolfer.gerrit.client.rest.GerritAuthData;
+import com.urswolfer.intellij.plugin.gerrit.ui.ChangeGrouping;
 import com.urswolfer.intellij.plugin.gerrit.ui.ShowProjectColumn;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -71,6 +72,7 @@ public final class GerritSettings implements PersistentStateComponent<GerritSett
         @Property(alwaysWrite = true) @Attribute("CloneBaseUrl") public String cloneBaseUrl = "";
         // written only when off, so the file stays as earlier versions write it
         @Attribute("CommentsInPlace") public boolean commentsInPlace = true;
+        @Attribute("GroupChangesBy") public ChangeGrouping groupChangesBy = ChangeGrouping.NONE;
     }
 
     /**
@@ -258,6 +260,14 @@ public final class GerritSettings implements PersistentStateComponent<GerritSett
 
     public void setCommentsInPlace(boolean commentsInPlace) {
         state.commentsInPlace = commentsInPlace;
+    }
+
+    public ChangeGrouping getGroupChangesBy() {
+        return state.groupChangesBy;
+    }
+
+    public void setGroupChangesBy(ChangeGrouping groupChangesBy) {
+        state.groupChangesBy = groupChangesBy;
     }
 
     public boolean getShowChangeNumberColumn() {
