@@ -11,10 +11,24 @@ This is a fork of [uwolfer/gerrit-intellij-plugin](https://github.com/uwolfer/ge
 Maximilian Kroboth, on the branch `inline-comment-threads`. It adds to the upstream plugin:
 
 * Review comments shown in place in the diff, below the line they are on, as threads with replies, the way the
-  GitLab and GitHub reviews in the IDE show them. Reply, Done, edit and delete drafts, and start a comment from a "+"
-  in the gutter, all without a popup. Previous and Next walk the threads of a file.
-* Comments rendered as Markdown, as Gerrit's web UI shows them, each beside its author's avatar (initials).
-* "Group by" in the toolbar of the change list: by topic, or by the stack the changes' commits form.
+  GitLab and GitHub reviews in the IDE show them. Reply, Quote, Ack, Done, edit and delete drafts, and start a
+  comment from a "+" in the gutter, all without a popup. Previous and Next walk the threads of a file.
+* Threads of earlier patch sets carried onto the newer one, at the line their text moved to, and marked with the
+  patch set they were written on.
+* The drafts of a change counted above the diff, and published from there with a message and votes.
+* A reply that was not sent yet kept, and the thread opened on it again, when the diff is closed and reopened.
+* The keyboard of Gerrit's web UI in the diff: N and P walk the threads, R answers the one at the caret, C starts a
+  comment. Each can be rebound in Settings | Keymap.
+* A comment's suggested fix (a ```` ```suggestion ```` block, or Gerrit's fix suggestions) applied to the local
+  copy, as one undoable edit, when the file is the one of the comment's patch set.
+* Comments and change messages rendered as Markdown, as Gerrit's web UI shows them, each beside its author's avatar,
+  with issue ids linked by the project's commentlinks.
+* A Conversations tab beside a change's details, listing the open threads of the change or of its whole stack; a
+  thread opens in the diff.
+* "Group by" in the toolbar of the change list: by topic, by the stack the changes' commits form, by issue, by hashtag
+  or by owner. A group row says where the group stands (approved, needs rebase, …); a stack's row reviews, checks
+  out or submits the stack.
+* A vote's message, such as a CI result, shown on the vote's column, and its link opened from there.
 * Settings | Version Control | Gerrit | Diff switches the comments back to the upstream gutter icons and popups.
 
 It is built and installed like the upstream plugin: `./gradlew buildPlugin`, then "Install Plugin from Disk" with the
