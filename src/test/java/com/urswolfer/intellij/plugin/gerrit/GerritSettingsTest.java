@@ -1,3 +1,4 @@
+// Modified 2026 by Maximilian Kroboth: covers the setting for comments shown in place in the diff.
 package com.urswolfer.intellij.plugin.gerrit;
 
 import com.intellij.util.xmlb.SkipDefaultsSerializationFilter;
@@ -132,6 +133,16 @@ public class GerritSettingsTest {
         Assert.assertEquals(read.refreshTimeout, 15);
         Assert.assertTrue(read.reviewNotifications);
         Assert.assertEquals(read.showProjectColumn, ShowProjectColumn.AUTO);
+    }
+
+    @Test
+    public void testCommentsAreShownInPlaceUnlessTurnedOff() throws Exception {
+        Assert.assertTrue(deserialize(LEGACY_SETTINGS_XML).commentsInPlace);
+
+        GerritSettings.SettingsState state = new GerritSettings.SettingsState();
+        state.commentsInPlace = false;
+
+        Assert.assertFalse(deserialize(new org.jdom.output.XMLOutputter().outputString(serialize(state))).commentsInPlace);
     }
 
     /**

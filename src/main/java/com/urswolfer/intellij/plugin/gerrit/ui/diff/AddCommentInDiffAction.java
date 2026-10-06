@@ -1,5 +1,6 @@
 /*
  * Copyright 2026 Urs Wolfer
+ * Modified 2026 by Maximilian Kroboth: delegates to either add-comment action of the diff.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,7 +37,7 @@ public class AddCommentInDiffAction extends AnAction implements DumbAware, Updat
 
     @Override
     public void actionPerformed(AnActionEvent e) {
-        AddCommentAction addCommentAction = findAddCommentAction(e);
+        AnAction addCommentAction = findAddCommentAction(e);
         if (addCommentAction != null) {
             addCommentAction.actionPerformed(e);
         }
@@ -44,7 +45,7 @@ public class AddCommentInDiffAction extends AnAction implements DumbAware, Updat
 
     @Override
     public void update(AnActionEvent e) {
-        AddCommentAction addCommentAction = findAddCommentAction(e);
+        AnAction addCommentAction = findAddCommentAction(e);
         e.getPresentation().setVisible(addCommentAction != null);
         if (addCommentAction == null) {
             e.getPresentation().setEnabled(false);
@@ -54,7 +55,7 @@ public class AddCommentInDiffAction extends AnAction implements DumbAware, Updat
     }
 
     @Nullable
-    private static AddCommentAction findAddCommentAction(AnActionEvent e) {
+    private static AnAction findAddCommentAction(AnActionEvent e) {
         Editor editor = e.getData(CommonDataKeys.EDITOR);
         if (editor == null) {
             editor = e.getData(DiffDataKeys.CURRENT_EDITOR);

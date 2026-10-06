@@ -1,6 +1,7 @@
 /*
  * Copyright 2000-2012 JetBrains s.r.o.
  * Copyright 2013 Urs Wolfer
+ * Modified 2026 by Maximilian Kroboth: adds the setting for comments shown in place in the diff.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -68,6 +69,8 @@ public final class GerritSettings implements PersistentStateComponent<GerritSett
         @Attribute(value = "ShowProjectColumn", converter = ShowProjectColumnConverter.class)
         public ShowProjectColumn showProjectColumn = ShowProjectColumn.AUTO;
         @Property(alwaysWrite = true) @Attribute("CloneBaseUrl") public String cloneBaseUrl = "";
+        // written only when off, so the file stays as earlier versions write it
+        @Attribute("CommentsInPlace") public boolean commentsInPlace = true;
     }
 
     /**
@@ -247,6 +250,14 @@ public final class GerritSettings implements PersistentStateComponent<GerritSett
 
     public boolean getPushToGerrit() {
         return state.pushToGerrit;
+    }
+
+    public boolean getCommentsInPlace() {
+        return state.commentsInPlace;
+    }
+
+    public void setCommentsInPlace(boolean commentsInPlace) {
+        state.commentsInPlace = commentsInPlace;
     }
 
     public boolean getShowChangeNumberColumn() {

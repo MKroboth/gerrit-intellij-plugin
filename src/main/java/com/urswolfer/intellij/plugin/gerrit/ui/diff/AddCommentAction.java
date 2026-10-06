@@ -1,6 +1,5 @@
 /*
  * Copyright 2013 Urs Wolfer
- * Modified 2026 by Maximilian Kroboth: starts the comment in place in the diff instead of in a popup.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,21 +16,28 @@
 
 package com.urswolfer.intellij.plugin.gerrit.ui.diff;
 
+import com.google.gerrit.extensions.api.changes.DraftInput;
 import com.google.gerrit.extensions.client.Comment;
-import com.intellij.icons.AllIcons;
+import com.google.gerrit.extensions.client.Side;
+import com.google.gerrit.extensions.common.ChangeInfo;
+import com.google.gerrit.extensions.common.CommentInfo;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
-import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.actionSystem.UpdateInBackground;
 import com.intellij.openapi.editor.Editor;
-import com.intellij.openapi.editor.SelectionModel;
+import com.intellij.openapi.editor.markup.RangeHighlighter;
 import com.intellij.openapi.project.DumbAware;
+import com.intellij.openapi.project.Project;
+import com.intellij.openapi.ui.popup.JBPopup;
+import com.intellij.openapi.ui.popup.JBPopupListener;
+import com.intellij.openapi.ui.popup.LightweightWindowEvent;
+import com.intellij.util.Consumer;
 import com.urswolfer.intellij.plugin.gerrit.GerritSettings;
-import org.jetbrains.annotations.NotNull;
+import com.urswolfer.intellij.plugin.gerrit.rest.GerritUtil;
+
+import javax.swing.*;
 
 /**
- * Starts a comment on the caret's line, or on the selection.
- *
  * @author Urs Wolfer
  *
  * Some parts based on code from:
@@ -40,36 +46,105 @@ import org.jetbrains.annotations.NotNull;
 @SuppressWarnings("ComponentNotRegistered") // added with code
 public class AddCommentAction extends AnAction implements DumbAware, UpdateInBackground {
 
-    private final GerritSettings gerritSettings = GerritSettings.getInstance();
     private final Editor editor;
-    private final EditorCommentThreads threads;
+    private final CommentsDiffTool commentsDiffTool;
+    private final GerritUtil gerritUtil;
+    private final GerritSettings gerritSettings;
+    private final ChangeInfo changeInfo;
+    private final String revisionId;
+    private final String filePath;
+    private final CommentBalloonBuilder commentBalloonBuilder;
+    private final Side commentSide;
+    private final Comment commentToEdit;
+    private final RangeHighlighter lineHighlighter;
+    private final RangeHighlighter rangeHighlighter;
+    private final Comment replyToComment;
 
-    AddCommentAction(@NotNull Editor editor, @NotNull EditorCommentThreads threads) {
-        super("Add Comment", null, AllIcons.Toolwindows.ToolWindowMessages);
+    public AddCommentAction(String label,
+                            Icon icon,
+                            CommentsDiffTool commentsDiffTool,
+                            GerritUtil gerritUtil,
+                            GerritSettings gerritSettings,
+                            Editor editor,
+                            CommentBalloonBuilder commentBalloonBuilder,
+                            ChangeInfo changeInfo,
+                            String revisionId,
+                            String filePath,
+                            Side commentSide,
+                            Comment commentToEdit,
+                            RangeHighlighter lineHighlighter,
+                            RangeHighlighter rangeHighlighter,
+                            Comment replyToComment) {
+        super(label, null, icon);
+
+        this.commentsDiffTool = commentsDiffTool;
+        this.gerritUtil = gerritUtil;
+        this.gerritSettings = gerritSettings;
+        this.changeInfo = changeInfo;
+        this.revisionId = revisionId;
+        this.filePath = filePath;
         this.editor = editor;
-        this.threads = threads;
+        this.commentBalloonBuilder = commentBalloonBuilder;
+        this.commentSide = commentSide;
+        this.commentToEdit = commentToEdit;
+        this.lineHighlighter = lineHighlighter;
+        this.rangeHighlighter = rangeHighlighter;
+        this.replyToComment = replyToComment;
+    }
+
+    public void actionPerformed(AnActionEvent e) {
+        final Project project = e.getProject();
+        if (project == null) return;
+        addVersionedComment(project);
     }
 
     @Override
-    public void actionPerformed(@NotNull AnActionEvent e) {
-        SelectionModel selectionModel = editor.getSelectionModel();
-        if (selectionModel.hasSelection()) {
-            Comment.Range range = RangeUtils.textOffsetToRange(editor.getDocument().getCharsSequence(),
-                selectionModel.getBlockSelectionStarts()[0], selectionModel.getBlockSelectionEnds()[0]);
-            threads.startThread(range.endLine, range); // end line as per specification
-        } else {
-            threads.startThread(editor.getDocument().getLineNumber(editor.getCaretModel().getOffset()) + 1, null);
+    public void update(AnActionEvent e) {
+        e.getPresentation().setEnabled(gerritSettings.isLoginAndPasswordAvailable());
+    }
+
+    private void addVersionedComment(final Project project) {
+        if (editor == null || filePath == null) return;
+
+        final CommentForm commentForm = new CommentForm(project, editor, filePath, commentSide, commentToEdit, replyToComment);
+        final JBPopup balloon = commentBalloonBuilder.getNewCommentBalloon(commentForm, "Comment");
+        balloon.addListener(new JBPopupListener() {
+            @Override
+            public void beforeShown(LightweightWindowEvent lightweightWindowEvent) {}
+
+            @Override
+            public void onClosed(LightweightWindowEvent event) {
+                DraftInput comment = commentForm.getComment();
+                if (comment != null) {
+                    handleComment(comment, project);
+                }
+            }
+        });
+        commentForm.setBalloon(balloon);
+        balloon.showInBestPositionFor(editor);
+    }
+
+    private void handleComment(final DraftInput comment, final Project project) {
+        if (commentToEdit != null) {
+            comment.id = commentToEdit.id;
         }
-    }
 
-    /**
-     * Disabled while a comment is being written in the diff: its shortcut may be a bare letter, which has to reach
-     * the comment's editor.
-     */
-    @Override
-    public void update(@NotNull AnActionEvent e) {
-        Editor focused = e.getData(CommonDataKeys.EDITOR);
-        e.getPresentation().setEnabled(gerritSettings.isLoginAndPasswordAvailable()
-            && (focused == null || focused == editor));
+        if (replyToComment != null) {
+            comment.inReplyTo = replyToComment.id;
+            comment.side = replyToComment.side;
+            comment.line = replyToComment.line;
+            comment.range = replyToComment.range;
+        }
+
+        gerritUtil.saveDraftComment(changeInfo._number, revisionId, comment, project,
+                new Consumer<CommentInfo>() {
+                    @Override
+                    public void consume(CommentInfo commentInfo) {
+                        if (commentToEdit != null) {
+                            commentsDiffTool.removeComment(project, editor, lineHighlighter, rangeHighlighter);
+                        }
+                        commentsDiffTool.addComment(editor, changeInfo, revisionId, project, commentInfo);
+                    }
+                });
     }
 }

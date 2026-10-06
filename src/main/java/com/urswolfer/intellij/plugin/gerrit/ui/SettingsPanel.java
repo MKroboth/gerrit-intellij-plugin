@@ -1,6 +1,7 @@
 /*
  * Copyright 2000-2010 JetBrains s.r.o.
  * Copyright 2013 Urs Wolfer
+ * Modified 2026 by Maximilian Kroboth: adds the setting for comments shown in place in the diff.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -61,6 +62,7 @@ public class SettingsPanel {
     private JCheckBox automaticRefreshCheckbox;
     private JCheckBox listAllChangesCheckbox;
     private JCheckBox pushToGerritCheckbox;
+    private JCheckBox commentsInPlaceCheckBox;
     private JCheckBox showChangeNumberColumnCheckBox;
     private JCheckBox showChangeIdColumnCheckBox;
     private JCheckBox showTopicColumnCheckBox;
@@ -69,6 +71,7 @@ public class SettingsPanel {
     private JBTextField gitilesUrlTextField;
     private JLabel minutesLabel;
     private JLabel listAllHint;
+    private JLabel commentsInPlaceHint;
     private JLabel pushHint;
     private JLabel cloneBaseUrlHint;
     private JLabel gitilesUrlHint;
@@ -85,7 +88,7 @@ public class SettingsPanel {
         this.project = project;
 
         hostTextField.getEmptyText().setText("https://review.example.org");
-        for (JLabel hint : new JLabel[]{listAllHint, pushHint, cloneBaseUrlHint, gitilesUrlHint}) {
+        for (JLabel hint : new JLabel[]{listAllHint, commentsInPlaceHint, pushHint, cloneBaseUrlHint, gitilesUrlHint}) {
             hint.setForeground(UIUtil.getContextHelpForeground());
             hint.setFont(UIUtil.getLabelFont(UIUtil.FontSize.SMALL));
         }
@@ -314,6 +317,14 @@ public class SettingsPanel {
 
     public void setShowChangeIdColumn(final boolean showChangeIdColumn) {
         showChangeIdColumnCheckBox.setSelected(showChangeIdColumn);
+    }
+
+    public boolean getCommentsInPlace() {
+        return commentsInPlaceCheckBox.isSelected();
+    }
+
+    public void setCommentsInPlace(boolean commentsInPlace) {
+        commentsInPlaceCheckBox.setSelected(commentsInPlace);
     }
 
     public boolean getShowTopicColumn() {

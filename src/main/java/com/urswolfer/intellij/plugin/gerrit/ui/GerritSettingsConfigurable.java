@@ -1,6 +1,7 @@
 /*
  * Copyright 2000-2013 JetBrains s.r.o.
  * Copyright 2013 Urs Wolfer
+ * Modified 2026 by Maximilian Kroboth: adds the setting for comments shown in place in the diff.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -75,6 +76,7 @@ public class GerritSettingsConfigurable implements SearchableConfigurable {
                 !Comparing.equal(gerritSettings.getRefreshTimeout(), settingsPane.getRefreshTimeout()) ||
                 !Comparing.equal(gerritSettings.getReviewNotifications(), settingsPane.getReviewNotifications()) ||
                 !Comparing.equal(gerritSettings.getPushToGerrit(), settingsPane.getPushToGerrit()) ||
+                !Comparing.equal(gerritSettings.getCommentsInPlace(), settingsPane.getCommentsInPlace()) ||
                 !Comparing.equal(gerritSettings.getShowChangeNumberColumn(), settingsPane.getShowChangeNumberColumn()) ||
                 !Comparing.equal(gerritSettings.getShowChangeIdColumn(), settingsPane.getShowChangeIdColumn()) ||
                 !Comparing.equal(gerritSettings.getShowTopicColumn(), settingsPane.getShowTopicColumn()) ||
@@ -102,6 +104,7 @@ public class GerritSettingsConfigurable implements SearchableConfigurable {
             gerritSettings.setReviewNotifications(settingsPane.getReviewNotifications());
             boolean pushToGerritChanged = gerritSettings.getPushToGerrit() != settingsPane.getPushToGerrit();
             gerritSettings.setPushToGerrit(settingsPane.getPushToGerrit());
+            gerritSettings.setCommentsInPlace(settingsPane.getCommentsInPlace());
             gerritSettings.setShowChangeNumberColumn(settingsPane.getShowChangeNumberColumn());
             gerritSettings.setShowChangeIdColumn(settingsPane.getShowChangeIdColumn());
             gerritSettings.setShowTopicColumn(settingsPane.getShowTopicColumn());
@@ -141,6 +144,7 @@ public class GerritSettingsConfigurable implements SearchableConfigurable {
             settingsPane.setRefreshTimeout(gerritSettings.getRefreshTimeout());
             settingsPane.setReviewNotifications(gerritSettings.getReviewNotifications());
             settingsPane.setPushToGerrit(gerritSettings.getPushToGerrit());
+            settingsPane.setCommentsInPlace(gerritSettings.getCommentsInPlace());
             settingsPane.setShowChangeNumberColumn(gerritSettings.getShowChangeNumberColumn());
             settingsPane.setShowChangeIdColumn(gerritSettings.getShowChangeIdColumn());
             settingsPane.setShowTopicColumn(gerritSettings.getShowTopicColumn());
