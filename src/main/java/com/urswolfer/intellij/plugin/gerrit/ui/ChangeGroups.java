@@ -189,8 +189,9 @@ public final class ChangeGroups {
     }
 
     /**
-     * Where a group of changes stands: how many have their Code-Review approval, how many fail verification, and how
-     * many threads are open. What is zero is left out, the approvals excepted.
+     * Where a group of changes stands: how many have their Code-Review approval, how many fail verification, how many
+     * sit on an outdated patch set of their parent, which Gerrit does not submit, and how many threads are open. What
+     * is zero is left out, the approvals excepted.
      */
     @NotNull
     public static String statusOf(@NotNull List<ChangeInfo> changes) {
@@ -202,8 +203,14 @@ public final class ChangeGroups {
             if (hasLabel(change, "Verified", false)) failing++;
             if (change.unresolvedCommentCount != null) openThreads += change.unresolvedCommentCount;
         }
+        Map<ChangeInfo, ChangeInfo> parents = findParents(changes);
+        int outdated = 0;
+        for (Map.Entry<ChangeInfo, ChangeInfo> child : parents.entrySet()) {
+            if (!Objects.equals(parentCommit(child.getKey()), child.getValue().currentRevision)) outdated++;
+        }
         StringBuilder status = new StringBuilder(approved + "/" + changes.size() + " approved");
         if (failing > 0) status.append(" · ").append(failing).append(" failing");
+        if (outdated > 0) status.append(" · ").append(outdated).append(outdated == 1 ? " needs rebase" : " need rebase");
         if (openThreads > 0) {
             status.append(" · ").append(openThreads).append(openThreads == 1 ? " open thread" : " open threads");
         }

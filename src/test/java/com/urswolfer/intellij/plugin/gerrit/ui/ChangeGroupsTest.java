@@ -192,6 +192,15 @@ public class ChangeGroupsTest {
         Assert.assertEquals("0/1 approved", ChangeGroups.statusOf(Collections.singletonList(change(1, "x", null, "a1"))));
     }
 
+    @Test
+    public void testStatusCountsChangesOnAnOutdatedParent() {
+        ChangeInfo parent = change(1, "parent", null, "a2");
+        parent.revisions.put("a1", revision(1, "a1", "root"));
+        ChangeInfo child = change(2, "child", null, "b1", "a1");
+
+        Assert.assertEquals("0/2 approved · 1 needs rebase", ChangeGroups.statusOf(Arrays.asList(child, parent)));
+    }
+
     private static LabelInfo label(boolean approved, boolean rejected) {
         LabelInfo label = new LabelInfo();
         label.approved = approved ? new AccountInfo(1) : null;

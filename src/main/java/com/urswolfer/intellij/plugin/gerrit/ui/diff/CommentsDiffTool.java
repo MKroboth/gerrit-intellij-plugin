@@ -1,7 +1,7 @@
 /*
  * Copyright 2013 Urs Wolfer
  * Modified 2026 by Maximilian Kroboth: shows comment threads in place in the diff unless the settings turn it off,
- * with a bar above the diff which publishes the drafts.
+ * with bars above the diff which publish the drafts and step through a stack.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -166,7 +166,7 @@ public class CommentsDiffTool implements FrameDiffTool, SuppressiveDiffTool {
         if (gerritSettings.getCommentsInPlace()) {
             DiffComments comments = new DiffComments(
                 project, changeInfo, selectedRevisionId, baseRevision, relativeFilePath, editor1, editor2);
-            top.setContent(comments.getDraftsBar());
+            top.setContent(comments.getBars());
             comments.load();
             gerritUtil.setReviewed(changeInfo._number, selectedRevisionId, relativeFilePath, project);
             return;

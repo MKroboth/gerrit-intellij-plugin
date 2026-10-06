@@ -24,11 +24,14 @@ import com.google.gerrit.extensions.common.RevisionInfo;
 import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Pair;
+import com.intellij.ui.EditorNotificationPanel;
+import com.intellij.ui.components.panels.VerticalLayout;
 import com.urswolfer.intellij.plugin.gerrit.rest.GerritUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.JComponent;
+import javax.swing.JPanel;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -83,9 +86,27 @@ final class DiffComments {
         return threads;
     }
 
+    /**
+     * The bars above the diff: the drafts to publish, and where the change is in a stack being reviewed.
+     */
     @NotNull
-    JComponent getDraftsBar() {
-        return draftsBar.getComponent();
+    JComponent getBars() {
+        JPanel bars = new JPanel(new VerticalLayout(0));
+        bars.add(draftsBar.getComponent());
+        StackReview review = StackReview.of(changeInfo);
+        if (review != null) {
+            int index = review.indexOf(changeInfo);
+            EditorNotificationPanel stackBar = new EditorNotificationPanel();
+            stackBar.setText("Stack review: change " + (index + 1) + " of " + review.size());
+            if (index > 0) {
+                stackBar.createActionLabel("Previous change", () -> review.open(index - 1));
+            }
+            if (index < review.size() - 1) {
+                stackBar.createActionLabel("Next change", () -> review.open(index + 1));
+            }
+            bars.add(stackBar);
+        }
+        return bars;
     }
 
     /**

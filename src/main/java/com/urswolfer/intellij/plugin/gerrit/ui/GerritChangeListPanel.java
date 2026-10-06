@@ -1,7 +1,8 @@
 /*
  * Copyright 2000-2011 JetBrains s.r.o.
  * Copyright 2013-2016 Urs Wolfer
- * Modified 2026 by Maximilian Kroboth: groups the changes by topic or by stack.
+ * Modified 2026 by Maximilian Kroboth: groups the changes by topic, stack, issue, hashtag or owner, with a menu of
+ * actions on a group's row.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,10 +30,17 @@ import com.google.gerrit.extensions.common.ChangeInfo;
 import com.google.gerrit.extensions.common.LabelInfo;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.BrowserUtil;
+import com.intellij.openapi.actionSystem.ActionGroup;
+import com.intellij.openapi.actionSystem.ActionManager;
 import com.intellij.openapi.actionSystem.ActionPlaces;
+import com.intellij.openapi.actionSystem.DefaultActionGroup;
+import com.intellij.openapi.actionSystem.ex.ActionUtil;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.options.ShowSettingsUtil;
+import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.ui.Messages;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.ui.PopupHandler;
 import com.intellij.ui.ScrollPaneFactory;
 import com.intellij.ui.SimpleTextAttributes;
@@ -46,6 +54,8 @@ import com.intellij.util.ui.UIUtil;
 import com.urswolfer.intellij.plugin.gerrit.GerritSettings;
 import com.urswolfer.intellij.plugin.gerrit.SelectedRevisions;
 import com.urswolfer.intellij.plugin.gerrit.rest.LoadChangesProxy;
+import com.urswolfer.intellij.plugin.gerrit.ui.action.SubmitAction;
+import com.urswolfer.intellij.plugin.gerrit.ui.diff.StackReview;
 import git4idea.GitUtil;
 import git4idea.repo.GitRepositoryManager;
 import org.jetbrains.annotations.NotNull;
@@ -136,7 +146,18 @@ public class GerritChangeListPanel extends JPanel {
         });
         table.getSelectionModel().setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 
-        PopupHandler.installPopupHandler(table, "Gerrit.ListPopup", ActionPlaces.UNKNOWN);
+        // a group row has a menu of its own; the one of the changes would act on whatever change is selected
+        table.addMouseListener(new PopupHandler() {
+            @Override
+            public void invokePopup(Component component, int x, int y) {
+                int row = table.rowAtPoint(new Point(x, y));
+                ActionGroup group = isGroupRow(row)
+                    ? groupRowActions((ChangeGroupRow) table.getRow(row))
+                    : (ActionGroup) ActionManager.getInstance().getAction("Gerrit.ListPopup");
+                ActionManager.getInstance().createActionPopupMenu(ActionPlaces.UNKNOWN, group)
+                    .getComponent().show(component, x, y);
+            }
+        });
 
         updateModel(changes);
         table.setStriped(true);
@@ -405,6 +426,53 @@ public class GerritChangeListPanel extends JPanel {
                 addChanges(more);
             }
         }));
+    }
+
+    private ActionGroup groupRowActions(ChangeGroupRow groupRow) {
+        DefaultActionGroup actions = new DefaultActionGroup();
+        List<ChangeInfo> topFirst = groupRow.getGroup().getChanges();
+        boolean stack = !topFirst.isEmpty() && groupRow.getGroup().positionOf(topFirst.get(0)) != null;
+        if (stack) {
+            ChangeInfo top = topFirst.get(0);
+            actions.add(DumbAwareAction.create("Review Stack", e -> {
+                GerritToolWindow toolWindow = e.getData(GerritToolWindow.GERRIT_TOOL_WINDOW);
+                if (toolWindow != null) {
+                    List<ChangeInfo> baseFirst = new ArrayList<>(topFirst);
+                    Collections.reverse(baseFirst);
+                    StackReview.start(baseFirst, change -> toolWindow.openDiff(change, null, null));
+                }
+            }));
+            actions.add(DumbAwareAction.create("Check Out Top of Stack", e -> {
+                if (selectChange(top.id)) {
+                    ActionUtil.invokeAction(
+                        ActionManager.getInstance().getAction("Gerrit.CheckoutAction"), table, ActionPlaces.UNKNOWN,
+                        null, null);
+                }
+            }));
+            actions.add(DumbAwareAction.create("Submit Stack...", e -> {
+                GerritToolWindow toolWindow = e.getData(GerritToolWindow.GERRIT_TOOL_WINDOW);
+                int answer = Messages.showYesNoDialog(project,
+                    "Submit the " + topFirst.size() + " changes of this stack? Gerrit submits its top change, \""
+                        + StringUtil.shortenTextWithEllipsis(top.subject, 60, 0)
+                        + "\", together with the changes it builds on.",
+                    "Submit Stack", null);
+                if (answer == Messages.YES) {
+                    new SubmitAction().submit(top, project, toolWindow);
+                }
+            }));
+            actions.addSeparator();
+        }
+        actions.add(DumbAwareAction.create("Unfold All Groups", e -> {
+            collapsedGroups.clear();
+            updateRows();
+        }));
+        actions.add(DumbAwareAction.create("Fold All Groups", e -> {
+            for (ChangeGroups.Group group : groupsOf(changes)) {
+                collapsedGroups.add(group.getKey());
+            }
+            updateRows();
+        }));
+        return actions;
     }
 
     private boolean isGroupRow(int row) {
