@@ -1,5 +1,6 @@
 /*
  * Copyright 2026 Urs Wolfer
+ * Modified 2026 by Maximilian Kroboth: renders comments as Markdown.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,7 +38,6 @@ import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
 import com.urswolfer.intellij.plugin.gerrit.GerritBundle;
 import com.urswolfer.intellij.plugin.gerrit.ui.avatar.AvatarIcons;
-import com.urswolfer.intellij.plugin.gerrit.util.TextToHtml;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -321,8 +321,8 @@ final class CommentThreadPanel extends JPanel implements DataProvider {
         text.setFont(UIUtil.getLabelFont());
         text.setForeground(UIUtil.getLabelForeground());
         text.setBorder(JBUI.Borders.emptyLeft(shift));
-        text.setText("<html><body>" + wrapping(TextToHtml.textToHtml(StringUtil.notNullize(comment.message)))
-            + "</body></html>");
+        text.setText("<html><head><style>" + CommentMarkdown.style() + "</style></head><body>"
+            + wrapping(CommentMarkdown.toHtml(StringUtil.notNullize(comment.message))) + "</body></html>");
         text.addHyperlinkListener(BrowserHyperlinkListener.INSTANCE);
         text.setTransferHandler(new TransferHandler() {
             @Override

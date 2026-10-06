@@ -1,5 +1,6 @@
 /*
  * Copyright 2013-2016 Urs Wolfer
+ * Modified 2026 by Maximilian Kroboth: adds commonmark to render comments as Markdown.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,6 +50,10 @@ dependencies {
         exclude group: 'org.apache.httpcomponents', module: 'httpclient'
     }
     implementation 'org.javassist:javassist:3.33.0-GA'
+    implementation 'org.commonmark:commonmark:0.30.0'
+    implementation 'org.commonmark:commonmark-ext-autolink:0.30.0'
+    implementation 'org.commonmark:commonmark-ext-gfm-strikethrough:0.30.0'
+    implementation 'org.commonmark:commonmark-ext-gfm-tables:0.30.0'
 
     testImplementation 'org.testng:testng:7.12.0'
     testImplementation 'org.easymock:easymock:5.7.0'

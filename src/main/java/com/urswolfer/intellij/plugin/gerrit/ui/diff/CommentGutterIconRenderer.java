@@ -1,5 +1,6 @@
 /*
  * Copyright 2013 Urs Wolfer
+ * Modified 2026 by Maximilian Kroboth: renders the comment as Markdown.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,7 +35,6 @@ import com.intellij.ui.JBColor;
 import com.intellij.util.text.DateFormatUtil;
 import com.urswolfer.intellij.plugin.gerrit.GerritBundle;
 import com.urswolfer.intellij.plugin.gerrit.util.CommentHelper;
-import com.urswolfer.intellij.plugin.gerrit.util.TextToHtml;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -112,7 +112,7 @@ public class CommentGutterIconRenderer extends GutterIconRenderer {
         return String.format("<strong>%s</strong> (%s)<br/>%s",
                 getAuthorName(fileComment),
                 fileComment.updated != null ? DateFormatUtil.formatPrettyDateTime(fileComment.updated) : GerritBundle.message("diff.draft"),
-                TextToHtml.textToHtml(fileComment.message));
+                CommentMarkdown.toHtml(StringUtil.notNullize(fileComment.message)));
     }
 
     @Nullable

@@ -1,5 +1,6 @@
 /*
  * Copyright 2013-2014 Urs Wolfer
+ * Modified 2026 by Maximilian Kroboth: previews a comment as Markdown.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,7 +38,7 @@ import com.intellij.ui.WrapWhenTypingReachesRightMarginCustomization;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.UIUtil;
 import com.urswolfer.intellij.plugin.gerrit.GerritBundle;
-import com.urswolfer.intellij.plugin.gerrit.util.TextToHtml;
+import com.urswolfer.intellij.plugin.gerrit.ui.diff.CommentMarkdown;
 
 import javax.swing.*;
 import javax.swing.event.ChangeEvent;
@@ -83,9 +84,9 @@ public class SafeHtmlTextEditor extends JPanel {
             @Override
             public void stateChanged(ChangeEvent e) {
                 if (((TabbedPaneImpl) e.getSource()).getSelectedComponent() == previewEditorPane) {
-                    String content = String.format("<html><head>%s</head><body>%s</body></html>",
-                            UIUtil.getCssFontDeclaration(UIUtil.getLabelFont()),
-                            TextToHtml.textToHtml(messageField.getText()));
+                    String content = String.format("<html><head>%s<style>%s</style></head><body>%s</body></html>",
+                            UIUtil.getCssFontDeclaration(UIUtil.getLabelFont()), CommentMarkdown.style(),
+                            CommentMarkdown.toHtml(messageField.getText()));
                     previewEditorPane.setText(content);
                 }
             }
