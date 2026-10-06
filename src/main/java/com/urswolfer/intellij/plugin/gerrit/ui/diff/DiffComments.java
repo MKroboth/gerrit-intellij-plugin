@@ -1,8 +1,8 @@
 /*
  * Copyright 2026 Urs Wolfer
  * Modified 2026 by Maximilian Kroboth: a "+" in the gutter starts a comment, Quote, Previous and Next under each
- * thread, the threads of earlier patch sets show on the newer side, saving or removing a draft is announced, and a key
- * answers the thread at the caret.
+ * thread, the threads of earlier patch sets show on the newer side, saving or removing a draft is announced, a key
+ * answers the thread at the caret, and a diff opened for a thread scrolls to it.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,9 +23,11 @@ import com.google.gerrit.extensions.client.Comment;
 import com.google.gerrit.extensions.common.ChangeInfo;
 import com.google.gerrit.extensions.common.CommentInfo;
 import com.intellij.codeInsight.hint.HintManager;
+import com.intellij.diff.util.DiffUtil;
 import com.intellij.diff.util.Side;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.AnAction;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorFactory;
@@ -437,6 +439,32 @@ final class DiffComments {
             keepingScrollPosition(editor, layout);
             upToDate.add(editor);
         });
+        revealAskedThread();
+    }
+
+    /**
+     * Scrolls a diff to the thread which the diff was opened for, see {@link ThreadReveal}, once its comments are in:
+     * those of earlier patch sets come after the others.
+     */
+    private void revealAskedThread() {
+        String asked = ThreadReveal.take(changeInfo.id, right.filePath);
+        if (asked == null) return;
+        ShownComment root = comments.stream().filter(entry -> asked.equals(entry.comment.id)).findFirst().orElse(null);
+        if (root == null) return;
+        for (Map.Entry<EditorEx, LineMapping> entry : editors.entrySet()) {
+            EditorEx editor = entry.getKey();
+            int line = threadLine(editor, entry.getValue(), root);
+            if (line >= 0 && !EditorComments.isFileEditor(editor)) {
+                ThreadReveal.done();
+                // once the threads are laid out, which the scroll position depends on
+                ApplicationManager.getApplication().invokeLater(() -> {
+                    if (!editor.isDisposed()) {
+                        DiffUtil.scrollEditor(editor, line, false);
+                    }
+                });
+                return;
+            }
+        }
     }
 
     /**
