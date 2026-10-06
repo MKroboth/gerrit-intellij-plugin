@@ -7,38 +7,107 @@ gerrit-intellij-plugin
 About this fork
 ---------------
 
-This is a fork of [uwolfer/gerrit-intellij-plugin](https://github.com/uwolfer/gerrit-intellij-plugin) by
-Maximilian Kroboth, on the branch `inline-comment-threads`. It adds to the upstream plugin:
+This is a personal fork of [uwolfer/gerrit-intellij-plugin](https://github.com/uwolfer/gerrit-intellij-plugin), kept
+by Maximilian Kroboth on the branch `inline-comment-threads`. It changes how review comments are shown and answered in
+the diff, and adds ways to group and act on changes in the change list, to suit one particular way of reviewing.
+Everything from "Introduction" on is the upstream README and describes the plugin as a whole.
 
-* Review comments shown in place in the diff, below the line they are on, as threads with replies, the way the
-  GitLab and GitHub reviews in the IDE show them. Reply, Quote, Ack, Done, edit and delete drafts, and start a
-  comment from a "+" in the gutter, all without a popup. Previous and Next walk the threads of a file.
-* Threads of earlier patch sets carried onto the newer one, at the line their text moved to, and marked with the
-  patch set they were written on.
-* The drafts of a change counted above the diff, and published from there with a message and votes.
-* A reply that was not sent yet kept, and the thread opened on it again, when the diff is closed and reopened.
-* The keyboard of Gerrit's web UI in the diff: N and P walk the threads, R answers the one at the caret, C starts a
-  comment. Each can be rebound in Settings | Keymap.
-* A comment's suggested fix (a ```` ```suggestion ```` block, or Gerrit's fix suggestions) applied to the local
-  copy, as one undoable edit, when the file is the one of the comment's patch set.
-* Comments and change messages rendered as Markdown, as Gerrit's web UI shows them, each beside its author's avatar,
-  with issue ids linked by the project's commentlinks.
-* A Conversations tab beside a change's details, listing the open threads of the change or of its whole stack; a
-  thread opens in the diff.
-* "Group by" in the toolbar of the change list: by topic, by the stack the changes' commits form, by issue, by hashtag
-  or by owner. A group row says where the group stands (approved, needs rebase, …); a stack's row reviews, checks
-  out or submits the stack.
-* A vote's message, such as a CI result, shown on the vote's column, and its link opened from there.
-* Settings | Version Control | Gerrit | Diff switches the comments back to the upstream gutter icons and popups.
+Many thanks to Urs Wolfer, who started this plugin in 2013 and has looked after it ever since, and to everyone who has
+contributed to it. This fork is built entirely on their work: the connection to Gerrit, the tool window, the change
+list, the diff integration and everything else the changes below rely on are theirs. For the plugin itself, use the
+upstream repository and the [JetBrains Marketplace release](https://plugins.jetbrains.com/plugin/7272). Problems with
+the changes below belong to this fork, not to the upstream project; please don't report them there.
+
+### Changes
+
+#### Comments in the diff
+
+* Comment threads are shown in the diff itself, as a card below the line they are on, with every comment and reply of
+  the thread, the way the GitLab and GitHub review tools in the IDE show them. A resolved thread collapses to one line
+  unless it holds a draft. This is on by default; Settings | Version Control | Gerrit | Diff | "Show comments in
+  place, below the line they are on" switches back to the upstream gutter icons and popups, which are unchanged.
+* Each thread ends in a row of buttons: Previous and Next scroll to the neighbouring thread, Quote starts a reply
+  quoting the last comment, Ack and Done answer and resolve the thread, and Reply opens an editor inside the thread.
+  Your drafts can be edited and deleted in place.
+* A "+" in the gutter, next to the line under the mouse, starts a comment on that line. "C" and the context menu start
+  one as well.
+* The threads of earlier patch sets are shown on the newer one too, at the line their text is on now according to
+  Gerrit's diff between the two patch sets. Each names the patch set it was written on, and says "line changed" when
+  its line was rewritten. A reply goes to the patch set the thread is on.
+* While the change has unpublished drafts, a bar above the diff says how many and publishes them, those of every patch
+  set, with a message, the votes you may give, and the review dialog's notify and submit options. A vote left at 0 is
+  not sent.
+* Text typed into a reply, an edit or a new comment and not saved yet is kept, per change and thread, until the IDE
+  closes; the editor opens again with it when the diff shows that file again.
+* Keys as in Gerrit's web UI: N and P go to the next and previous thread, R replies to the thread at the caret, and C
+  starts a comment. The bare letters apply only while the keymap has no shortcut of its own for "Next Comment
+  Thread", "Previous Comment Thread", "Reply to Comment Thread" or "Add Comment", and not while typing in a comment.
+* A comment holding a ```` ```suggestion ```` block, as Gerrit's web UI writes them, or a Gerrit fix suggestion shows
+  an "Apply fix" link. It edits the local file as one undoable change and opens the file there, but only when the
+  local file is the same as in the comment's patch set; otherwise it says so and changes nothing. A comment on the base
+  side of the diff offers no fix.
+
+#### Comment text
+
+* Comments and change messages are rendered as Markdown, as in Gerrit's web UI, with
+  [commonmark-java](https://github.com/commonmark/commonmark-java) and GitHub-style tables, strikethrough and bare
+  links. Raw HTML is shown as text, and an image as a link to it.
+* Each comment shows its author's initials on a coloured circle. Gerrit only sends avatar images when an avatar plugin
+  is installed, and the fork does not fetch them from anywhere else.
+* Issue ids in comments and change messages are links, from the Gerrit project's `commentlink` sections and the IDE's
+  Issue Navigation settings.
+
+#### Change list
+
+* "Group by" in the toolbar shows the listed changes in groups that fold: by topic, by the stack their commits form
+  (newest first, each change with its place in the stack, such as "3/8"), by the issue in the commit message's
+  `Issue:` trailer, by hashtag (the first one alphabetically) or by owner. While grouped, the list loads further pages,
+  up to 500 changes, so that a stack is not split. The choice is kept in the settings.
+* A group's row says how many of its changes are approved, how many fail verification, how many sit on an outdated
+  patch set of their parent and need a rebase, and how many threads are open.
+* Right-clicking a stack's row offers Review Stack (the diff of each change in turn, from the base of the stack, with
+  a bar above it to move to the previous or next change), Check Out Top of Stack, and Submit Stack (after asking, it
+  submits the top change, which Gerrit merges together with the changes it builds on). Every group row can fold or
+  unfold all groups.
+* A vote's tooltip in the list also shows what the voter wrote with it, such as a CI server's build result, and a click
+  on the vote opens the first link in that message.
+* A "Conversations" tab next to the change details lists the threads of the selected change that wait for an answer,
+  on every patch set, with their file, line, patch set and last comment. "Whole stack" lists those of every change in
+  its stack. Double-click or Enter opens the diff at the thread.
+
+#### Known limitations
+
+* In the side-by-side diff, the two sides can drift out of line around a thread's card.
+* Review Stack opens a new diff window for each change.
+* The changes are tested in IntelliJ IDEA 2020.3.4 against Gerrit 3.14. The comment threads in the diff were also
+  tried in IntelliJ IDEA 2026.2.3, and the plugin verifier reports the build as compatible with it.
+
+### Files
+
+Files changed from upstream carry a "Modified" line in their header that says what changed; new files carry their own
+copyright line. Both are under the Apache License 2.0, as the rest of the plugin is. The upstream files changed are:
+
+* `build.gradle`: the Markdown libraries.
+* `GerritSettings`, `GerritSettingsConfigurable`, `SettingsPanel` (and its form), `GerritSettingsTest`: the settings
+  for comments in place and for grouping changes.
+* `GerritUtil`: reports a failed draft save or delete to the caller, and reads the comments of every patch set, file
+  diffs, drafts, change messages, comment links and file contents.
+* `CommentsDiffTool`, `AddCommentInDiffAction`: the threads in place unless the settings turn them off, and the bars
+  above the diff.
+* `GerritChangeListPanel`, `GerritToolWindow`: grouping, the group rows' menu, vote messages and the Conversations tab.
+* `GerritChangeDetailsPanel`: change messages as Markdown, with issue links.
+* `RepositoryChangesBrowserProvider`: opens the diff of a given file of a change, for the Conversations tab.
+* `plugin.xml`: the actions that walk and answer threads.
+
+Everything else is in new classes, mostly in `ui/diff`. The fork also bundles
+[commonmark-java](https://github.com/commonmark/commonmark-java) (BSD 2-Clause License) and
+[autolink-java](https://github.com/robinst/autolink-java) (MIT License), whose licence texts ship inside their jars.
+
+### Building and installing
 
 It is built and installed like the upstream plugin: `./gradlew buildPlugin`, then "Install Plugin from Disk" with the
 zip in `build/distributions`. The plugin has the same id as the one on the JetBrains Marketplace, so an update from
 there replaces it.
-
-Files changed from upstream carry a "Modified" line in their header; new files carry their own copyright line. Both
-are under the Apache License 2.0, as the rest of the plugin. The fork additionally bundles
-[commonmark-java](https://github.com/commonmark/commonmark-java) (BSD 2-Clause License) and
-[autolink-java](https://github.com/robinst/autolink-java) (MIT License), whose licence texts ship inside their jars.
 
 Introduction
 -----------
