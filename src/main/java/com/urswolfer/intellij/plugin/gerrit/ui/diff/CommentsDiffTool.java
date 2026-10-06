@@ -1,7 +1,7 @@
 /*
  * Copyright 2013 Urs Wolfer
  * Modified 2026 by Maximilian Kroboth: shows comment threads in place in the diff unless the settings turn it off,
- * with those of earlier patch sets carried forward.
+ * with a bar above the diff which publishes the drafts.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -56,6 +56,7 @@ import com.intellij.openapi.vcs.changes.Change;
 import com.intellij.openapi.vcs.changes.ChangesUtil;
 import com.intellij.openapi.vcs.changes.actions.diff.ChangeDiffRequestProducer;
 import com.intellij.ui.PopupHandler;
+import com.intellij.ui.components.panels.Wrapper;
 import com.intellij.util.Consumer;
 import com.urswolfer.intellij.plugin.gerrit.GerritSettings;
 import com.urswolfer.intellij.plugin.gerrit.SelectedRevisions;
@@ -65,6 +66,9 @@ import com.urswolfer.intellij.plugin.gerrit.util.PathUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import javax.swing.JComponent;
+import javax.swing.JPanel;
+import java.awt.BorderLayout;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -72,7 +76,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.TreeMap;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -151,6 +154,7 @@ public class CommentsDiffTool implements FrameDiffTool, SuppressiveDiffTool {
 
     private void handleComments(@Nullable final EditorEx editor1,
                                 final EditorEx editor2,
+                                final Wrapper top,
                                 Change change,
                                 final Project project,
                                 final ChangeInfo changeInfo,
@@ -160,7 +164,11 @@ public class CommentsDiffTool implements FrameDiffTool, SuppressiveDiffTool {
         final String relativeFilePath = PathUtils.ensureSlashSeparators(getRelativeOrAbsolutePath(project, filePath.getPath(), changeInfo));
 
         if (gerritSettings.getCommentsInPlace()) {
-            showCommentsInPlace(editor1, editor2, project, changeInfo, selectedRevisionId, baseRevision, relativeFilePath);
+            DiffComments comments = new DiffComments(
+                project, changeInfo, selectedRevisionId, baseRevision, relativeFilePath, editor1, editor2);
+            top.setContent(comments.getDraftsBar());
+            comments.load();
+            gerritUtil.setReviewed(changeInfo._number, selectedRevisionId, relativeFilePath, project);
             return;
         }
 
@@ -220,99 +228,6 @@ public class CommentsDiffTool implements FrameDiffTool, SuppressiveDiffTool {
                 relativeFilePath, project);
     }
 
-    private void showCommentsInPlace(@Nullable EditorEx editor1,
-                                     EditorEx editor2,
-                                     Project project,
-                                     ChangeInfo changeInfo,
-                                     String selectedRevisionId,
-                                     Optional<Pair<String, RevisionInfo>> baseRevision,
-                                     String relativeFilePath) {
-        EditorCommentThreads threads2 = createThreads(
-            project, editor2, changeInfo, selectedRevisionId, relativeFilePath, Side.REVISION);
-        EditorCommentThreads threads1 = null;
-        if (editor1 != null) {
-            threads1 = baseRevision.isPresent()
-                ? createThreads(project, editor1, changeInfo, baseRevision.get().getFirst(), relativeFilePath, Side.REVISION)
-                : createThreads(project, editor1, changeInfo, selectedRevisionId, relativeFilePath, Side.PARENT);
-        }
-
-        final EditorCommentThreads parentThreads = baseRevision.isPresent() ? null : threads1;
-        gerritUtil.getComments(changeInfo._number, selectedRevisionId, project, true, true,
-            comments -> {
-                List<CommentInfo> fileComments = comments.getOrDefault(relativeFilePath, Collections.emptyList());
-                threads2.setComments(filter(fileComments, REVISION_COMMENT));
-                if (parentThreads != null) {
-                    parentThreads.setComments(filter(fileComments, REVISION_COMMENT.negate()));
-                }
-            });
-
-        if (threads1 != null && baseRevision.isPresent()) {
-            final EditorCommentThreads baseThreads = threads1;
-            gerritUtil.getComments(changeInfo._number, baseRevision.get().getFirst(), project, true, true,
-                comments -> baseThreads.setComments(filter(
-                    comments.getOrDefault(relativeFilePath, Collections.emptyList()), REVISION_COMMENT)));
-        }
-
-        showEarlierComments(threads2, project, changeInfo, selectedRevisionId, baseRevision, relativeFilePath);
-
-        gerritUtil.setReviewed(changeInfo._number, selectedRevisionId, relativeFilePath, project);
-    }
-
-    /**
-     * Gerrit lists a comment with the patch set it was made on, and a review often moves on to a new patch set before
-     * the threads are answered. Those of earlier patch sets which this diff does not show already appear on the newer
-     * side, at the line their line became.
-     */
-    private void showEarlierComments(EditorCommentThreads threads,
-                                     Project project,
-                                     ChangeInfo changeInfo,
-                                     String revisionId,
-                                     Optional<Pair<String, RevisionInfo>> baseRevision,
-                                     String path) {
-        RevisionInfo shown = changeInfo.revisions != null ? changeInfo.revisions.get(revisionId) : null;
-        if (shown == null) {
-            return;
-        }
-        Integer comparedWith = baseRevision.map(base -> base.getSecond()._number).orElse(null);
-        gerritUtil.getChangeComments(changeInfo._number, project, all -> {
-            Map<Integer, List<CommentInfo>> byPatchSet = new TreeMap<>();
-            for (CommentInfo comment : all.getOrDefault(path, Collections.emptyList())) {
-                if (comment.patchSet == null || comment.patchSet >= shown._number
-                    || comment.patchSet.equals(comparedWith) || !REVISION_COMMENT.test(comment)) {
-                    continue;
-                }
-                byPatchSet.computeIfAbsent(comment.patchSet, key -> new ArrayList<>()).add(comment);
-            }
-            for (Map.Entry<Integer, List<CommentInfo>> entry : byPatchSet.entrySet()) {
-                String revision = changeInfo.revisions.entrySet().stream()
-                    .filter(candidate -> entry.getKey().equals(candidate.getValue()._number))
-                    .map(Map.Entry::getKey)
-                    .findFirst().orElse(null);
-                if (revision == null) {
-                    continue;
-                }
-                gerritUtil.getFileDiff(changeInfo._number, revisionId, path, entry.getKey(), project, diff -> {
-                    if (diff != null && diff.content != null) {
-                        threads.addEarlierComments(entry.getValue(), entry.getKey(), revision,
-                            LineMapping.fromDiff(diff.content));
-                    }
-                });
-            }
-        });
-    }
-
-    private EditorCommentThreads createThreads(Project project,
-                                               EditorEx editor,
-                                               ChangeInfo changeInfo,
-                                               String revisionId,
-                                               String filePath,
-                                               Side commentSide) {
-        EditorCommentThreads threads = new EditorCommentThreads(
-            project, editor, changeInfo, revisionId, filePath, commentSide);
-        installAddCommentAction(editor, new AddCommentInPlaceAction(editor, threads));
-        return threads;
-    }
-
     private void addCommentAction(EditorEx editor1, EditorEx editor2, String filePath, ChangeInfo changeInfo,
                                   String selectedRevisionId, Optional<Pair<String, RevisionInfo>> baseRevision) {
         if (baseRevision.isPresent()) {
@@ -338,7 +253,7 @@ public class CommentsDiffTool implements FrameDiffTool, SuppressiveDiffTool {
         installAddCommentAction(editor, addCommentAction);
     }
 
-    private static void installAddCommentAction(Editor editor, AnAction addCommentAction) {
+    static void installAddCommentAction(Editor editor, AnAction addCommentAction) {
         DefaultActionGroup group = new DefaultActionGroup();
         editor.putUserData(ADD_COMMENT_ACTION, addCommentAction);
         addCommentAction.registerCustomShortcutSet(ADD_COMMENT_SHORTCUT_SET, editor.getContentComponent());
@@ -400,36 +315,67 @@ public class CommentsDiffTool implements FrameDiffTool, SuppressiveDiffTool {
     }
 
     private void handleDiffViewer(DiffContext diffContext, ContentDiffRequest diffRequest,
-                                  @Nullable EditorEx editor1, EditorEx editor2) {
+                                  @Nullable EditorEx editor1, EditorEx editor2, Wrapper top) {
         ChangeInfo changeInfo = diffContext.getUserData(GerritUserDataKeys.CHANGE);
         Optional<Pair<String, RevisionInfo>> baseRevision = diffContext.getUserData(GerritUserDataKeys.BASE_REVISION);
         String selectedRevisionId = changeInfo != null
             ? SelectedRevisions.getInstance(diffContext.getProject()).get(changeInfo) : null;
         Change change = diffRequest.getUserData(ChangeDiffRequestProducer.CHANGE_KEY);
-        handleComments(editor1, editor2, change, diffContext.getProject(), changeInfo, selectedRevisionId, baseRevision);
+        handleComments(editor1, editor2, top, change, diffContext.getProject(), changeInfo, selectedRevisionId, baseRevision);
+    }
+
+    /**
+     * The platform's diff notifications took a component until 2020.3 and take a provider since, so the bar above the
+     * diff goes into a panel of the viewer's own.
+     */
+    private static JComponent withTop(JComponent viewer, Wrapper top) {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.add(top, BorderLayout.NORTH);
+        panel.add(viewer, BorderLayout.CENTER);
+        return panel;
     }
 
     private class SimpleCommentsDiffViewer extends SimpleDiffViewer {
+        private final Wrapper top = new Wrapper();
+        private final JComponent component;
+
         public SimpleCommentsDiffViewer(@NotNull DiffContext context, @NotNull DiffRequest request) {
             super(context, request);
+            component = withTop(super.getComponent(), top);
+        }
+
+        @NotNull
+        @Override
+        public JComponent getComponent() {
+            return component;
         }
 
         @Override
         protected void onInit() {
             super.onInit();
-            handleDiffViewer(myContext, myRequest, getEditor1(), getEditor2());
+            handleDiffViewer(myContext, myRequest, getEditor1(), getEditor2(), top);
         }
     }
 
     private class SimpleOnesideCommentsDiffViewer extends SimpleOnesideDiffViewer {
+        private final Wrapper top = new Wrapper();
+        private final JComponent component;
+
         public SimpleOnesideCommentsDiffViewer(@NotNull DiffContext context, @NotNull DiffRequest request) {
             super(context, request);
+            component = withTop(super.getComponent(), top);
+        }
+
+        @NotNull
+        @Override
+        public JComponent getComponent() {
+            return component;
         }
 
         @Override
         protected void onInit() {
             super.onInit();
-            handleDiffViewer(myContext, myRequest, null, getEditor());
+            handleDiffViewer(myContext, myRequest, null, getEditor(), top);
         }
     }
 

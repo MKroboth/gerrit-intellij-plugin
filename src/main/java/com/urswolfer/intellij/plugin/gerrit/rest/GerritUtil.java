@@ -650,6 +650,23 @@ public final class GerritUtil {
     }
 
     /**
+     * The drafts on every patch set of a change.
+     */
+    public void getChangeDrafts(final int changeNr,
+                                final Project project,
+                                final Consumer<Map<String, List<CommentInfo>>> consumer) {
+        Supplier<Map<String, List<CommentInfo>>> supplier = () -> {
+            try {
+                return gerritApi().changes().id(changeNr).drafts();
+            } catch (RestApiException e) {
+                notifyError(e, "Failed to get Gerrit draft comments.", project);
+                return Collections.emptyMap();
+            }
+        };
+        accessGerrit(supplier, consumer, project);
+    }
+
+    /**
      * @param consumer gets null when there is no diff, as for a file the base patch set does not have
      */
     public void getFileDiff(final int changeNr,

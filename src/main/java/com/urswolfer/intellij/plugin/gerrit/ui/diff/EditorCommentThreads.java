@@ -73,6 +73,7 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
     /** The shown threads from the top of the file to the bottom. */
     private final List<ShownThread> order = new ArrayList<>();
     private final Map<Integer, NewThread> newThreads = new HashMap<>();
+    private Runnable draftsChanged = () -> {};
 
     EditorCommentThreads(@NotNull Project project,
                          @NotNull EditorEx editor,
@@ -88,6 +89,10 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
         this.side = side;
         this.inlays = new EditorCommentInlays(editor);
         AddCommentGutterIcon.install(editor, this::canComment, line -> startThread(line, null));
+    }
+
+    void onDraftsChanged(@NotNull Runnable draftsChanged) {
+        this.draftsChanged = draftsChanged;
     }
 
     void setComments(@NotNull Collection<CommentInfo> fileComments) {
@@ -174,6 +179,7 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
                 comments.remove(draft.id);
                 origins.remove(draft.id);
                 refresh();
+                draftsChanged.run();
             });
     }
 
@@ -189,6 +195,7 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
             }
             onSaved.run();
             refresh();
+            draftsChanged.run();
         }, onFailed);
     }
 
