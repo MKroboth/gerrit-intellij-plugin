@@ -303,6 +303,47 @@ public class GerritChangeListPanel extends JPanel {
         }
     }
 
+    /**
+     * Selects the listed change, unfolding its group if it is folded, and scrolls it into view.
+     *
+     * @return false when the change is not listed
+     */
+    public boolean selectChange(@NotNull String changeId) {
+        Optional<ChangeInfo> listed = findChange(changeId);
+        if (!listed.isPresent()) {
+            return false;
+        }
+        ChangeInfo change = listed.get();
+        if (grouping != ChangeGrouping.NONE && table.getItems().stream().noneMatch(row -> row == change)) {
+            for (ChangeGroups.Group group : groupsOf(changes)) {
+                if (group.getChanges().contains(change)) {
+                    collapsedGroups.remove(group.getKey());
+                }
+            }
+            updateRows();
+        }
+        table.setSelection(Collections.singletonList(change));
+        int row = table.getSelectedRow();
+        if (row >= 0) {
+            table.scrollRectToVisible(table.getCellRect(row, 0, true));
+        }
+        return true;
+    }
+
+    /**
+     * The listed changes of the stack the change is in, the one furthest from the base first; the change alone when
+     * it is in none.
+     */
+    @NotNull
+    public List<ChangeInfo> stackOf(@NotNull ChangeInfo change) {
+        for (ChangeGroups.Group group : ChangeGroups.byStack(changes)) {
+            if (group.positionOf(change) != null) {
+                return group.getChanges();
+            }
+        }
+        return Collections.singletonList(change);
+    }
+
     public Optional<ChangeInfo> findChange(String changeId) {
         return changes.stream().filter(change -> change.id.equals(changeId)).findFirst();
     }

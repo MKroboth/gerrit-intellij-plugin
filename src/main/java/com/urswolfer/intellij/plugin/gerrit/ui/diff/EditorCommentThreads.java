@@ -23,6 +23,7 @@ import com.google.gerrit.extensions.common.ChangeInfo;
 import com.google.gerrit.extensions.common.CommentInfo;
 import com.intellij.codeInsight.highlighting.HighlightManager;
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.Inlay;
 import com.intellij.openapi.editor.LogicalPosition;
 import com.intellij.openapi.editor.colors.EditorColors;
@@ -281,6 +282,13 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
         order.sort(Comparator.comparingInt(shown -> shown.line));
         for (int i = 0; i < order.size(); i++) {
             order.get(i).panel.setNeighbours(i > 0, i < order.size() - 1);
+        }
+        String asked = ThreadReveal.take(changeInfo.id, filePath);
+        ShownThread askedFor = asked != null ? shownThreads.get(asked) : null;
+        if (askedFor != null) {
+            ThreadReveal.done();
+            // after the new inlays are laid out, which the scroll position depends on
+            ApplicationManager.getApplication().invokeLater(() -> show(askedFor));
         }
     }
 

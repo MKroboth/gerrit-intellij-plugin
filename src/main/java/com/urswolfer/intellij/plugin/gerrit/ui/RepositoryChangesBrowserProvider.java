@@ -1,5 +1,6 @@
 /*
  * Copyright 2013-2015 Urs Wolfer
+ * Modified 2026 by Maximilian Kroboth: opens the diff of a given file of a change, for the conversations panel.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +30,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.vcs.VcsException;
 import com.intellij.openapi.vcs.changes.Change;
+import com.intellij.openapi.vcs.changes.ContentRevision;
 import com.intellij.openapi.vcs.changes.committed.CommittedChangesBrowser;
 import com.intellij.openapi.vcs.changes.ui.ChangeNodeDecorator;
 import com.intellij.openapi.vcs.changes.ui.ChangesBrowserNodeRenderer;
@@ -49,10 +51,12 @@ import com.urswolfer.intellij.plugin.gerrit.ui.changesbrowser.SelectBaseRevision
 import com.urswolfer.intellij.plugin.gerrit.util.GerritUserDataKeys;
 import com.urswolfer.intellij.plugin.gerrit.util.NotificationBuilder;
 import com.urswolfer.intellij.plugin.gerrit.util.NotificationService;
+import com.urswolfer.intellij.plugin.gerrit.util.PathUtils;
 import git4idea.GitCommit;
 import git4idea.history.GitHistoryUtils;
 import git4idea.repo.GitRepository;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -112,8 +116,13 @@ public class RepositoryChangesBrowserProvider {
         return changesBrowser;
     }
 
-    private final class GerritRepositoryChangesBrowser extends CommittedChangesBrowser {
+    final class GerritRepositoryChangesBrowser extends CommittedChangesBrowser {
         private ChangeInfo selectedChange;
+        private int listedUpdate = -1;
+        @Nullable
+        private GitRepository listedRepository;
+        @Nullable
+        private Pair<String, Runnable> whenListed;
         private Optional<Pair<String, RevisionInfo>> baseRevision = Optional.empty();
         private Project project;
         private int changesUpdate;
@@ -256,11 +265,50 @@ public class RepositoryChangesBrowserProvider {
                             }
                             getViewer().setEmptyText("No changes");
                             setChangesToDisplay(new ArrayList<>(totalDiff));
+                            listedUpdate = update;
+                            listedRepository = gitRepository;
+                            Pair<String, Runnable> pending = whenListed;
+                            if (pending != null && selectedChange != null && selectedChange.id.equals(pending.getFirst())) {
+                                whenListed = null;
+                                pending.getSecond().run();
+                            }
                         }
                     });
                     return null;
                 }
             });
+        }
+
+        /**
+         * Opens the diff of a file of the change, as a double-click on it does, once the change's files are listed.
+         *
+         * @param path as Gerrit names it; null for the first file listed
+         */
+        void showDiffWhenListed(@NotNull String changeId, @Nullable String path) {
+            Runnable show = () -> {
+                for (Change change : getAllChanges()) {
+                    if (path == null || path.equals(gerritPath(change))) {
+                        selectEntries(Collections.singletonList(change));
+                        showDiff();
+                        return;
+                    }
+                }
+            };
+            if (selectedChange != null && selectedChange.id.equals(changeId) && listedUpdate == changesUpdate) {
+                show.run();
+            } else {
+                whenListed = Pair.create(changeId, show);
+            }
+        }
+
+        @Nullable
+        private String gerritPath(Change change) {
+            ContentRevision revision = change.getAfterRevision() != null ? change.getAfterRevision() : change.getBeforeRevision();
+            if (revision == null) {
+                return null;
+            }
+            return PathUtils.ensureSlashSeparators(PathUtils.getRelativeOrAbsolutePath(
+                Optional.ofNullable(listedRepository), revision.getFile().getPath()));
         }
 
         private GitCommit getCommit(VirtualFile gitRepositoryRoot, String revisionId) throws VcsException {

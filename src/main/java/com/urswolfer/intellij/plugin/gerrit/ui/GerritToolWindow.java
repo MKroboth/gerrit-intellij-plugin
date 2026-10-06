@@ -1,7 +1,8 @@
 /*
  * Copyright 2013 Urs Wolfer
  * Copyright 2000-2013 JetBrains s.r.o.
- * Modified 2026 by Maximilian Kroboth: adds "Group by" to the toolbar of the change list.
+ * Modified 2026 by Maximilian Kroboth: adds "Group by" to the toolbar of the change list, a tab of the
+ * selected change's open conversations, and opening a file's diff from code.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,18 +33,20 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.SimpleToolWindowPanel;
-import com.intellij.openapi.vcs.changes.committed.CommittedChangesBrowser;
 import com.intellij.ui.JBSplitter;
 import com.intellij.ui.OnePixelSplitter;
+import com.intellij.ui.components.JBTabbedPane;
 import com.intellij.util.Consumer;
 import com.urswolfer.intellij.plugin.gerrit.GerritSettings;
 import com.urswolfer.intellij.plugin.gerrit.rest.GerritUtil;
 import com.urswolfer.intellij.plugin.gerrit.rest.LoadChangesProxy;
+import com.urswolfer.intellij.plugin.gerrit.ui.diff.ThreadReveal;
 import com.urswolfer.intellij.plugin.gerrit.ui.filter.ChangesFilter;
 import com.urswolfer.intellij.plugin.gerrit.ui.filter.GerritChangesFilters;
 import git4idea.GitUtil;
 import git4idea.repo.GitRepository;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.util.List;
@@ -69,6 +72,7 @@ public class GerritToolWindow implements Disposable {
     private final RepositoryChangesBrowserProvider repositoryChangesBrowserProvider = new RepositoryChangesBrowserProvider();
 
     private GerritChangeDetailsPanel detailsPanel;
+    private RepositoryChangesBrowserProvider.GerritRepositoryChangesBrowser repositoryChangesBrowser;
     private int changesLoad;
 
     /**
@@ -96,7 +100,7 @@ public class GerritToolWindow implements Disposable {
         toolbar.setTargetComponent(changeListPanel);
         panel.setToolbar(toolbar.getComponent());
 
-        CommittedChangesBrowser repositoryChangesBrowser = repositoryChangesBrowserProvider.get(project, changeListPanel, this);
+        repositoryChangesBrowser = repositoryChangesBrowserProvider.get(project, changeListPanel, this);
 
         JBSplitter detailsSplitter = new OnePixelSplitter(true, 0.6f);
         detailsSplitter.setSplitterProportionKey("Gerrit.ListDetailSplitter.Proportion");
@@ -111,7 +115,14 @@ public class GerritToolWindow implements Disposable {
         });
         changeListPanel.addSelectionClearedListener(detailsPanel::nothingSelected);
         JPanel details = detailsPanel.getComponent();
-        detailsSplitter.setSecondComponent(details);
+        JBTabbedPane tabs = new JBTabbedPane();
+        tabs.addTab("Details", details);
+        OpenThreadsPanel openThreads = new OpenThreadsPanel(project, this, changeListPanel,
+            count -> tabs.setTitleAt(1, count > 0 ? "Conversations (" + count + ")" : "Conversations"));
+        tabs.addTab("Conversations", openThreads.getComponent());
+        changeListPanel.addListSelectionListener(openThreads::setChange);
+        changeListPanel.addSelectionClearedListener(() -> openThreads.setChange(null));
+        detailsSplitter.setSecondComponent(tabs);
 
         JBSplitter horizontalSplitter = new OnePixelSplitter(false, 0.7f);
         horizontalSplitter.setSplitterProportionKey("Gerrit.DetailRepositoryChangeBrowser.Proportion");
@@ -154,6 +165,20 @@ public class GerritToolWindow implements Disposable {
                 }
             }
         });
+    }
+
+    /**
+     * Selects the change, and opens the diff of one of its files once they are listed there, scrolled to a thread.
+     *
+     * @param path as Gerrit names it; null for the first file
+     */
+    public void openDiff(@NotNull ChangeInfo change, @Nullable String path, @Nullable String threadRootId) {
+        if (path != null && threadRootId != null) {
+            ThreadReveal.request(change.id, path, threadRootId);
+        }
+        if (changeListPanel.selectChange(change.id)) {
+            repositoryChangesBrowser.showDiffWhenListed(change.id, path);
+        }
     }
 
     /**
