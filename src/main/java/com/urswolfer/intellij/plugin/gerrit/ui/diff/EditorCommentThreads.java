@@ -119,7 +119,7 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
             }
         });
         CommentCard card = new CommentCard();
-        card.getContent().add(newThread.editor);
+        card.getContent().add(CommentThreadPanel.withAvatar(AvatarIcon.self(AvatarIcon.commentSize()), newThread.editor));
         newThread.inlay = inlays.insert(toLineIndex(line), card);
         if (newThread.inlay == null) return;
         newThreads.put(line, newThread);

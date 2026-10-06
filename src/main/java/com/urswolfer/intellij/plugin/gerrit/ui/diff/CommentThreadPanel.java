@@ -19,6 +19,8 @@ package com.urswolfer.intellij.plugin.gerrit.ui.diff;
 import com.google.gerrit.extensions.common.AccountInfo;
 import com.google.gerrit.extensions.common.CommentInfo;
 import com.intellij.icons.AllIcons;
+import com.intellij.openapi.editor.colors.EditorColorsManager;
+import com.intellij.openapi.editor.colors.EditorColorsScheme;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.ui.BrowserHyperlinkListener;
@@ -27,17 +29,18 @@ import com.intellij.ui.components.labels.LinkLabel;
 import com.intellij.util.text.DateFormatUtil;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
-import com.urswolfer.intellij.plugin.gerrit.util.TextToHtml;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.Box;
 import javax.swing.BoxLayout;
+import javax.swing.Icon;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JEditorPane;
 import javax.swing.JPanel;
 import java.awt.BorderLayout;
+import java.awt.Color;
 import java.awt.Font;
 import java.util.ArrayList;
 import java.util.List;
@@ -119,7 +122,7 @@ final class CommentThreadPanel extends CommentCard {
                 card.add(createComment(comment));
             }
             if (replyEditor != null) {
-                card.add(replyEditor);
+                card.add(withAvatar(AvatarIcon.self(AvatarIcon.commentSize()), replyEditor));
             } else {
                 card.add(createFooter());
             }
@@ -148,7 +151,7 @@ final class CommentThreadPanel extends CommentCard {
         int count = thread.getComments().size();
         String text = "Resolved · " + authorName(root) + ": " + StringUtil.shortenTextWithEllipsis(firstLine, 80, 0)
             + (count > 1 ? " (" + count + " comments)" : "");
-        LinkLabel<Object> link = new LinkLabel<>(text, null, (source, data) -> expand());
+        LinkLabel<Object> link = new LinkLabel<>(text, AvatarIcon.of(root, JBUI.scale(16)), (source, data) -> expand());
         JComponent reply = null;
         if (canReply()) {
             reply = new LinkLabel<>("Reply", null, (source, data) -> {
@@ -200,14 +203,28 @@ final class CommentThreadPanel extends CommentCard {
             actions = links;
         }
 
-        JPanel panel = new JPanel(new BorderLayout(0, JBUI.scale(2)));
-        panel.setOpaque(false);
-        panel.add(row(title, actions), BorderLayout.NORTH);
+        JPanel content = new JPanel(new BorderLayout(0, JBUI.scale(2)));
+        content.setOpaque(false);
+        content.add(row(title, actions), BorderLayout.NORTH);
         if (draftEditor != null && comment.id.equals(editedDraftId)) {
-            panel.add(draftEditor, BorderLayout.CENTER);
+            content.add(draftEditor, BorderLayout.CENTER);
         } else {
-            panel.add(createBody(comment.message), BorderLayout.CENTER);
+            content.add(createBody(comment.message), BorderLayout.CENTER);
         }
+        return withAvatar(AvatarIcon.of(comment, AvatarIcon.commentSize()), content);
+    }
+
+    /**
+     * The avatar in a column of its own, so that text and editors line up under the author's name.
+     */
+    static JComponent withAvatar(@NotNull Icon avatar, @NotNull JComponent content) {
+        JPanel column = new JPanel(new BorderLayout());
+        column.setOpaque(false);
+        column.add(new JBLabel(avatar), BorderLayout.NORTH);
+        JPanel panel = new JPanel(new BorderLayout(JBUI.scale(8), 0));
+        panel.setOpaque(false);
+        panel.add(column, BorderLayout.WEST);
+        panel.add(content, BorderLayout.CENTER);
         return panel;
     }
 
@@ -330,8 +347,25 @@ final class CommentThreadPanel extends CommentCard {
         pane.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
         pane.setFont(UIUtil.getLabelFont());
         pane.addHyperlinkListener(BrowserHyperlinkListener.INSTANCE);
-        pane.setText("<html><body>" + TextToHtml.textToHtml(StringUtil.notNullize(message)) + "</body></html>");
+        pane.setText("<html><head><style>" + bodyStyle() + "</style></head><body>"
+            + CommentMarkdown.toHtml(StringUtil.notNullize(message)) + "</body></html>");
         return pane;
+    }
+
+    /**
+     * Built per comment, so that it follows a change of theme or editor font.
+     */
+    private static String bodyStyle() {
+        EditorColorsScheme scheme = EditorColorsManager.getInstance().getGlobalScheme();
+        return "p { margin-top: 0; margin-bottom: 4px; }"
+            + " code, pre { font-family: " + scheme.getEditorFontName() + "; }"
+            + " pre { background-color: " + hex(scheme.getDefaultBackground()) + "; padding: 4px; margin: 2px 0 6px 0; }"
+            + " blockquote { color: " + hex(UIUtil.getContextHelpForeground()) + "; margin: 0 0 4px 8px; }"
+            + " ul, ol { margin-top: 0; margin-bottom: 4px; }";
+    }
+
+    private static String hex(Color color) {
+        return String.format("#%06x", color.getRGB() & 0xffffff);
     }
 
     private static JComponent row(@NotNull JComponent left, @Nullable JComponent right) {
