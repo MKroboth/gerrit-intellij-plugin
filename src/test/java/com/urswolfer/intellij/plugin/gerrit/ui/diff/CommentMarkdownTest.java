@@ -19,6 +19,9 @@ package com.urswolfer.intellij.plugin.gerrit.ui.diff;
 import org.junit.Assert;
 import org.testng.annotations.Test;
 
+import java.util.Arrays;
+import java.util.Collections;
+
 public class CommentMarkdownTest {
 
     @Test
@@ -62,6 +65,33 @@ public class CommentMarkdownTest {
     @Test
     public void testScriptLinksAreDropped() {
         Assert.assertFalse(CommentMarkdown.toHtml("[x](javascript:alert(1))").contains("javascript:"));
+    }
+
+    @Test
+    public void testCommentLinksTurnIdsIntoLinks() {
+        String html = CommentMarkdown.toHtml("Fixes RL-132, see RL-7.",
+            Collections.singletonList(new CommentMarkdown.Link("(RL-\\d+)", "https://issues.example.org/issue/$1")));
+
+        Assert.assertTrue(html, html.contains("<a href=\"https://issues.example.org/issue/RL-132\">RL-132</a>"));
+        Assert.assertTrue(html, html.contains("<a href=\"https://issues.example.org/issue/RL-7\">RL-7</a>"));
+    }
+
+    @Test
+    public void testCommentLinksLeaveCodeAndLinksAlone() {
+        String html = CommentMarkdown.toHtml("`RL-1` and [RL-2](https://example.org/x)",
+            Collections.singletonList(new CommentMarkdown.Link("(RL-\\d+)", "https://issues.example.org/issue/$1")));
+
+        Assert.assertTrue(html, html.contains("<code>RL-1</code>"));
+        Assert.assertFalse(html, html.contains("issue/RL-2"));
+    }
+
+    @Test
+    public void testTheEarliestOfSeveralCommentLinksWins() {
+        String html = CommentMarkdown.toHtml("bug 12 in RL-3", Arrays.asList(
+            new CommentMarkdown.Link("(RL-\\d+)", "https://yt.example.org/$1"),
+            new CommentMarkdown.Link("bug (\\d+)", "https://bugs.example.org/$1")));
+
+        Assert.assertTrue(html, html.contains("<a href=\"https://bugs.example.org/12\">bug 12</a> in <a href=\"https://yt.example.org/RL-3\">RL-3</a>"));
     }
 
     /**

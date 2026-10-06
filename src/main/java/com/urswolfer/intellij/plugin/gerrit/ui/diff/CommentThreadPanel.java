@@ -19,8 +19,6 @@ package com.urswolfer.intellij.plugin.gerrit.ui.diff;
 import com.google.gerrit.extensions.common.AccountInfo;
 import com.google.gerrit.extensions.common.CommentInfo;
 import com.intellij.icons.AllIcons;
-import com.intellij.openapi.editor.colors.EditorColorsManager;
-import com.intellij.openapi.editor.colors.EditorColorsScheme;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.ui.BrowserHyperlinkListener;
@@ -40,7 +38,6 @@ import javax.swing.JComponent;
 import javax.swing.JEditorPane;
 import javax.swing.JPanel;
 import java.awt.BorderLayout;
-import java.awt.Color;
 import java.awt.Font;
 import java.util.ArrayList;
 import java.util.List;
@@ -78,6 +75,12 @@ final class CommentThreadPanel extends CommentCard {
          */
         @NotNull
         String unsentKey(@NotNull String kind, @NotNull String id);
+
+        /**
+         * What turns an issue's id in a comment into a link.
+         */
+        @NotNull
+        List<CommentMarkdown.Link> commentLinks();
     }
 
     private final Project project;
@@ -270,7 +273,7 @@ final class CommentThreadPanel extends CommentCard {
         if (draftEditor != null && comment.id.equals(editedDraftId)) {
             content.add(draftEditor, BorderLayout.CENTER);
         } else {
-            content.add(createBody(comment.message), BorderLayout.CENTER);
+            content.add(createBody(comment.message, controller.commentLinks()), BorderLayout.CENTER);
         }
         return withAvatar(AvatarIcon.of(comment, AvatarIcon.commentSize()), content);
     }
@@ -425,7 +428,7 @@ final class CommentThreadPanel extends CommentCard {
         }
     }
 
-    private static JComponent createBody(@Nullable String message) {
+    private static JComponent createBody(@Nullable String message, List<CommentMarkdown.Link> links) {
         JEditorPane pane = new JEditorPane();
         pane.setEditorKit(UIUtil.getHTMLEditorKit());
         pane.setEditable(false);
@@ -434,26 +437,11 @@ final class CommentThreadPanel extends CommentCard {
         pane.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
         pane.setFont(UIUtil.getLabelFont());
         pane.addHyperlinkListener(BrowserHyperlinkListener.INSTANCE);
-        pane.setText("<html><head><style>" + bodyStyle() + "</style></head><body>"
-            + CommentMarkdown.toHtml(StringUtil.notNullize(message)) + "</body></html>");
+        pane.setText("<html><head><style>" + CommentMarkdown.style() + "</style></head><body>"
+            + CommentMarkdown.toHtml(StringUtil.notNullize(message), links) + "</body></html>");
         return pane;
     }
 
-    /**
-     * Built per comment, so that it follows a change of theme or editor font.
-     */
-    private static String bodyStyle() {
-        EditorColorsScheme scheme = EditorColorsManager.getInstance().getGlobalScheme();
-        return "p { margin-top: 0; margin-bottom: 4px; }"
-            + " code, pre { font-family: " + scheme.getEditorFontName() + "; }"
-            + " pre { background-color: " + hex(scheme.getDefaultBackground()) + "; padding: 4px; margin: 2px 0 6px 0; }"
-            + " blockquote { color: " + hex(UIUtil.getContextHelpForeground()) + "; margin: 0 0 4px 8px; }"
-            + " ul, ol { margin-top: 0; margin-bottom: 4px; }";
-    }
-
-    private static String hex(Color color) {
-        return String.format("#%06x", color.getRGB() & 0xffffff);
-    }
 
     private static JComponent row(@NotNull JComponent left, @Nullable JComponent right) {
         JPanel row = new JPanel(new BorderLayout(JBUI.scale(8), 0));

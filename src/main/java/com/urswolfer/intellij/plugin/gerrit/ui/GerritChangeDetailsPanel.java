@@ -1,6 +1,7 @@
 /*
  * Copyright 2013-2014 Urs Wolfer
  * Copyright 2000-2011 JetBrains s.r.o.
+ * Modified 2026 by Maximilian Kroboth: change messages render as Markdown, with Gerrit's and the IDE's issue links.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,7 +37,8 @@ import com.intellij.util.text.DateFormatUtil;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.vcsUtil.UIVcsUtil;
 import com.urswolfer.intellij.plugin.gerrit.ui.action.AccountLookup;
-import com.urswolfer.intellij.plugin.gerrit.util.TextToHtml;
+import com.urswolfer.intellij.plugin.gerrit.ui.diff.CommentLinks;
+import com.urswolfer.intellij.plugin.gerrit.ui.diff.CommentMarkdown;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -47,6 +49,7 @@ import java.awt.*;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -70,13 +73,17 @@ public class GerritChangeDetailsPanel {
         }
     };
 
+    private final Project project;
     private final JPanel panel;
 
     private final MyPresentationData presentationData;
 
     private final JEditorPane jEditorPane;
+    @Nullable
+    private ChangeInfo shown;
 
     public GerritChangeDetailsPanel(final Project project) {
+        this.project = project;
         panel = new JPanel(new CardLayout());
         panel.add(UIVcsUtil.errorPanel("Nothing selected", false), NOTHING_SELECTED);
         panel.add(UIVcsUtil.errorPanel("Loading...", false), LOADING);
@@ -116,7 +123,14 @@ public class GerritChangeDetailsPanel {
     }
 
     public void setData(@NotNull final ChangeInfo changeInfo) {
-        presentationData.setCommit(changeInfo);
+        shown = changeInfo;
+        // the messages render with the links; once they arrived, the change is shown again, if still selected
+        List<CommentMarkdown.Link> links = CommentLinks.getInstance().get(project, changeInfo.project, () -> {
+            if (shown == changeInfo) {
+                setData(changeInfo);
+            }
+        });
+        presentationData.setCommit(changeInfo, links != null ? links : Collections.emptyList());
         ((CardLayout) panel.getLayout()).show(panel, DATA);
 
         changeDetailsText();
@@ -192,17 +206,18 @@ public class GerritChangeDetailsPanel {
             this.project = project;
         }
 
-        public void setCommit(final ChangeInfo changeInfo) {
+        public void setCommit(final ChangeInfo changeInfo, List<CommentMarkdown.Link> links) {
             StringBuilder stringBuilder = new StringBuilder();
             addMetaData(changeInfo, stringBuilder);
             addLabels(changeInfo, stringBuilder);
-            addMessages(changeInfo, stringBuilder);
+            addMessages(changeInfo, links, stringBuilder);
             startPattern = stringBuilder.toString();
         }
 
         private void addMetaData(ChangeInfo changeInfo, StringBuilder sb) {
             String comment = changeInfo.subject != null ? IssueLinkHtmlRenderer.formatTextWithLinks(project, changeInfo.subject) : "-";
             sb.append("<html><head>").append(UIUtil.getCssFontDeclaration(UIUtil.getLabelFont()))
+                    .append("<style>").append(CommentMarkdown.style()).append("</style>")
                     .append("</head><body><table>")
                     .append("<tr valign=\"top\"><td><i>Change-Id:</i></td><td><b>").append(changeInfo.changeId).append("</b></td></tr>")
                     .append("<tr valign=\"top\"><td><i>Change #:</i></td><td><b>").append(changeInfo._number).append("</b></td></tr>")
@@ -263,7 +278,7 @@ public class GerritChangeDetailsPanel {
             sb.append("</td></tr>");
         }
 
-        private void addMessages(ChangeInfo changeInfo, StringBuilder sb) {
+        private void addMessages(ChangeInfo changeInfo, List<CommentMarkdown.Link> links, StringBuilder sb) {
             if (changeInfo.messages != null && !changeInfo.messages.isEmpty()) {
                 sb.append("<tr valign=\"top\"><td><i>Comments:</i></td><td>");
                 for (ChangeMessageInfo changeMessageInfo : changeInfo.messages) {
@@ -275,7 +290,8 @@ public class GerritChangeDetailsPanel {
                         }
                         sb.append(": ");
                     }
-                    sb.append(TextToHtml.textToHtml(changeMessageInfo.message)).append("<br/>");
+                    // Gerrit shows change messages as Markdown, reviews written for it included
+                    sb.append(CommentMarkdown.toHtml(changeMessageInfo.message != null ? changeMessageInfo.message : "", links));
                 }
                 sb.append("</td></tr>");
             }

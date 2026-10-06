@@ -3,7 +3,7 @@
  * Copyright 2013-2018 Urs Wolfer
  * Modified 2026 by Maximilian Kroboth: saving and deleting a draft comment can report a failure to the caller;
  * the change list asks for the commits it groups stacks by; comments of every patch set, file diffs, drafts and
- * change messages are read.
+ * change messages and comment links are read.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ import com.google.gerrit.extensions.api.changes.DraftInput;
 import com.google.gerrit.extensions.api.changes.ReviewInput;
 import com.google.gerrit.extensions.api.changes.SubmitInput;
 import com.google.gerrit.extensions.api.projects.BranchInfo;
+import com.google.gerrit.extensions.api.projects.CommentLinkInfo;
 import com.google.gerrit.extensions.client.ListChangesOption;
 import com.google.gerrit.extensions.common.AccountInfo;
 import com.google.gerrit.extensions.common.ChangeInfo;
@@ -44,6 +45,8 @@ import com.google.gerrit.extensions.common.RevisionInfo;
 import com.google.gerrit.extensions.restapi.RestApiException;
 import com.google.gerrit.extensions.restapi.Url;
 import com.intellij.notification.NotificationAction;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.diagnostic.Logger;
@@ -75,12 +78,15 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.VisibleForTesting;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -647,6 +653,40 @@ public final class GerritUtil {
                 notifyError(e, "Failed to get Gerrit comments.", project);
                 return Collections.emptyMap();
             }
+        };
+        accessGerrit(supplier, consumer, project);
+    }
+
+    /**
+     * The "commentlink" sections of a project's configuration, inherited ones included.
+     */
+    public void getCommentLinks(final String projectName,
+                                final Project project,
+                                final Consumer<Map<String, CommentLinkInfo>> consumer) {
+        // read as plain JSON: the client's own parsing of a project's config needs a newer Gson than 2020.3 bundles;
+        // and whatever fails, the comments are shown without the links rather than not at all
+        Supplier<Map<String, CommentLinkInfo>> supplier = () -> {
+            Map<String, CommentLinkInfo> links = new LinkedHashMap<>();
+            try {
+                JsonElement config = gerritApi().restClient().getRequest(
+                    "/projects/" + URLEncoder.encode(projectName, StandardCharsets.UTF_8).replace("+", "%20") + "/config");
+                JsonElement commentLinks = config != null && config.isJsonObject()
+                    ? config.getAsJsonObject().get("commentlinks") : null;
+                if (commentLinks != null && commentLinks.isJsonObject()) {
+                    for (Map.Entry<String, JsonElement> entry : commentLinks.getAsJsonObject().entrySet()) {
+                        if (!entry.getValue().isJsonObject()) continue;
+                        JsonObject json = entry.getValue().getAsJsonObject();
+                        CommentLinkInfo link = new CommentLinkInfo();
+                        link.match = json.has("match") ? json.get("match").getAsString() : null;
+                        link.link = json.has("link") ? json.get("link").getAsString() : null;
+                        link.enabled = json.has("enabled") ? json.get("enabled").getAsBoolean() : null;
+                        links.put(entry.getKey(), link);
+                    }
+                }
+            } catch (RestApiException | RuntimeException | LinkageError e) {
+                LOG.warn("Failed to read the comment links of " + projectName, e);
+            }
+            return links;
         };
         accessGerrit(supplier, consumer, project);
     }

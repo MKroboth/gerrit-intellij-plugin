@@ -40,6 +40,7 @@ import org.jetbrains.annotations.Nullable;
 import java.awt.Rectangle;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -78,6 +79,7 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
     private ShownThread lastRevealed;
     private final Map<Integer, NewThread> newThreads = new HashMap<>();
     private Runnable draftsChanged = () -> {};
+    private List<CommentMarkdown.Link> commentLinks = Collections.emptyList();
 
     EditorCommentThreads(@NotNull Project project,
                          @NotNull EditorEx editor,
@@ -94,6 +96,16 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
         this.inlays = new EditorCommentInlays(editor);
         AddCommentGutterIcon.install(editor, this::canComment, line -> startThread(line, null));
         ThreadKeys.install(editor, this);
+    }
+
+    void setCommentLinks(@NotNull List<CommentMarkdown.Link> commentLinks) {
+        this.commentLinks = commentLinks;
+    }
+
+    @NotNull
+    @Override
+    public List<CommentMarkdown.Link> commentLinks() {
+        return commentLinks;
     }
 
     void onDraftsChanged(@NotNull Runnable draftsChanged) {

@@ -113,6 +113,15 @@ final class DiffComments {
      * Also after publishing, which turns the drafts into comments under the same ids.
      */
     void load() {
+        // the comments render with the links, so they wait for them
+        List<CommentMarkdown.Link> links = CommentLinks.getInstance().get(project, changeInfo.project, this::load);
+        if (links == null) {
+            return;
+        }
+        threads2.setCommentLinks(links);
+        if (threads1 != null) {
+            threads1.setCommentLinks(links);
+        }
         EditorCommentThreads parentThreads = baseRevision.isPresent() ? null : threads1;
         gerritUtil.getComments(changeInfo._number, revisionId, project, true, true, comments -> {
             List<CommentInfo> fileComments = comments.getOrDefault(path, Collections.emptyList());
