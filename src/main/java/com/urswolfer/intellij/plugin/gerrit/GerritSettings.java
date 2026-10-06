@@ -1,6 +1,7 @@
 /*
  * Copyright 2000-2012 JetBrains s.r.o.
  * Copyright 2013 Urs Wolfer
+ * Modified 2026 by Maximilian Kroboth: adds the setting for grouping changes.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +26,7 @@ import com.intellij.openapi.components.Storage;
 import com.intellij.util.xmlb.Converter;
 import com.intellij.util.xmlb.annotations.Attribute;
 import com.intellij.util.xmlb.annotations.Property;
+import com.urswolfer.intellij.plugin.gerrit.ui.ChangeGrouping;
 import com.urswolfer.intellij.plugin.gerrit.ui.ShowProjectColumn;
 import org.jetbrains.annotations.NotNull;
 
@@ -76,6 +78,7 @@ public final class GerritSettings implements PersistentStateComponent<GerritSett
         @Property(alwaysWrite = true) @Attribute("CloneBaseUrl") public String cloneBaseUrl = "";
         /** Separated by commas, which no column name and no Gerrit label name holds. */
         @Property(alwaysWrite = true) @Attribute("HiddenColumns") public String hiddenColumns = "";
+        @Attribute("GroupChangesBy") public ChangeGrouping groupChangesBy = ChangeGrouping.NONE;
     }
 
     /**
@@ -164,6 +167,14 @@ public final class GerritSettings implements PersistentStateComponent<GerritSett
 
     public boolean getPushToGerrit() {
         return state.pushToGerrit;
+    }
+
+    public ChangeGrouping getGroupChangesBy() {
+        return state.groupChangesBy;
+    }
+
+    public void setGroupChangesBy(ChangeGrouping groupChangesBy) {
+        state.groupChangesBy = groupChangesBy;
     }
 
     public boolean getShowChangeNumberColumn() {

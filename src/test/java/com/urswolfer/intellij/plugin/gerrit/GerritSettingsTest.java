@@ -1,7 +1,9 @@
+// Modified 2026 by Maximilian Kroboth: covers the setting for grouping changes.
 package com.urswolfer.intellij.plugin.gerrit;
 
 import com.intellij.util.xmlb.SkipDefaultsSerializationFilter;
 import com.intellij.util.xmlb.XmlSerializer;
+import com.urswolfer.intellij.plugin.gerrit.ui.ChangeGrouping;
 import com.urswolfer.intellij.plugin.gerrit.ui.ShowProjectColumn;
 import org.jdom.Attribute;
 import org.jdom.Element;
@@ -179,6 +181,18 @@ public class GerritSettingsTest {
         Assert.assertEquals(read.refreshTimeout, 15);
         Assert.assertTrue(read.reviewNotifications);
         Assert.assertEquals(read.showProjectColumn, ShowProjectColumn.AUTO);
+    }
+
+    @Test
+    public void testChangesAreUngroupedUntilGrouped() throws Exception {
+        Assert.assertEquals(deserialize(LEGACY_SETTINGS_XML).groupChangesBy, ChangeGrouping.NONE);
+
+        GerritSettings.SettingsState state = new GerritSettings.SettingsState();
+        state.groupChangesBy = ChangeGrouping.STACK;
+
+        Assert.assertEquals(
+            deserialize(new org.jdom.output.XMLOutputter().outputString(serialize(state))).groupChangesBy,
+            ChangeGrouping.STACK);
     }
 
     /**

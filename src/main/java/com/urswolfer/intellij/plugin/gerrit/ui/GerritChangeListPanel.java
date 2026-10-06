@@ -1,6 +1,7 @@
 /*
  * Copyright 2000-2011 JetBrains s.r.o.
  * Copyright 2013-2016 Urs Wolfer
+ * Modified 2026 by Maximilian Kroboth: groups the changes by topic or by stack.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,11 +39,13 @@ import com.intellij.ui.SimpleTextAttributes;
 import com.intellij.ui.speedSearch.SpeedSearchSupply;
 import com.intellij.ui.table.TableView;
 import com.intellij.util.Consumer;
+import com.intellij.util.ui.ColumnInfo;
 import com.intellij.util.ui.ListTableModel;
 import com.intellij.util.ui.StatusText;
 import com.urswolfer.intellij.plugin.gerrit.GerritAccount;
 import com.urswolfer.intellij.plugin.gerrit.GerritBundle;
 import com.urswolfer.intellij.plugin.gerrit.GerritProjectAccount;
+import com.urswolfer.intellij.plugin.gerrit.GerritSettings;
 import com.urswolfer.intellij.plugin.gerrit.SelectedRevisions;
 import com.urswolfer.intellij.plugin.gerrit.rest.GerritUtil;
 import com.urswolfer.intellij.plugin.gerrit.rest.LoadChangesProxy;
@@ -60,8 +63,12 @@ import java.awt.event.AdjustmentListener;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Supplier;
 
 /**
@@ -104,6 +111,9 @@ public class GerritChangeListPanel extends JPanel implements DataProvider {
     private LoadChangesProxy listedProxy;
     private Runnable clearFilters;
     private Runnable retry;
+    private ChangeGrouping grouping;
+    private final Set<String> collapsedGroups = new HashSet<>();
+    private final Map<ChangeInfo, String> stackPositions = new IdentityHashMap<>();
 
     private final JScrollPane scrollPane;
     private final GerritChangeColumns columns;
@@ -112,8 +122,34 @@ public class GerritChangeListPanel extends JPanel implements DataProvider {
         this.project = project;
         this.selectedRevisions = SelectedRevisions.getInstance(project);
         this.changes = new ArrayList<>();
+        this.grouping = GerritSettings.getInstance().getGroupChangesBy();
 
-        this.table = new TableView<ChangeInfo>();
+        this.table = new TableView<ChangeInfo>() {
+            @Override
+            public void changeSelection(int row, int column, boolean toggle, boolean extend) {
+                if (isGroupRow(row)) {
+                    groupRowTargeted(row, column);
+                    return;
+                }
+                super.changeSelection(row, column, toggle, extend);
+            }
+        };
+        // every way of selecting a row ends here, the popup's right click as well as changeSelection()
+        table.setSelectionModel(new DefaultListSelectionModel() {
+            @Override
+            public void setSelectionInterval(int index0, int index1) {
+                if (!isGroupRow(index1)) {
+                    super.setSelectionInterval(index0, index1);
+                }
+            }
+
+            @Override
+            public void addSelectionInterval(int index0, int index1) {
+                if (!isGroupRow(index1)) {
+                    super.addSelectionInterval(index0, index1);
+                }
+            }
+        });
         this.columns = new GerritChangeColumns(project, table);
         table.getSelectionModel().setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 
@@ -202,7 +238,8 @@ public class GerritChangeListPanel extends JPanel implements DataProvider {
         new DoubleClickListener() {
             @Override
             protected boolean onDoubleClick(@NotNull MouseEvent event) {
-                if (table.rowAtPoint(event.getPoint()) < 0) {
+                int row = table.rowAtPoint(event.getPoint());
+                if (row < 0 || isGroupRow(row)) {
                     return false;
                 }
                 open.run();
@@ -354,8 +391,11 @@ public class GerritChangeListPanel extends JPanel implements DataProvider {
             public void valueChanged(final ListSelectionEvent e) {
                 ListSelectionModel lsm = (ListSelectionModel) e.getSource();
                 int i = lsm.getMaxSelectionIndex();
-                if (i >= 0 && !e.getValueIsAdjusting() && !rebuildingColumns) {
-                    listener.consume(changes.get(i));
+                if (i >= 0 && i < table.getRowCount() && !e.getValueIsAdjusting() && !rebuildingColumns) {
+                    ChangeInfo change = table.getRow(i);
+                    if (!(change instanceof ChangeGroupRow)) {
+                        listener.consume(change);
+                    }
                 }
             }
         });
@@ -418,7 +458,9 @@ public class GerritChangeListPanel extends JPanel implements DataProvider {
         if (previouslySelected == null) {
             return;
         }
-        Optional<ChangeInfo> reloaded = findChange(previouslySelected.id);
+        // a change in a collapsed group is not in the table's rows
+        Optional<ChangeInfo> reloaded = findChange(previouslySelected.id)
+            .filter(change -> table.getItems().stream().anyMatch(row -> row == change));
         if (reloaded.isPresent()) {
             // not scrolled to: the user may have scrolled away from it to look at other changes
             table.setSelection(Collections.singletonList(reloaded.get()));
@@ -435,6 +477,10 @@ public class GerritChangeListPanel extends JPanel implements DataProvider {
 
     public void addChanges(@NotNull List<ChangeInfo> changes) {
         this.changes.addAll(changes);
+        if (grouping != ChangeGrouping.NONE) {
+            updateRows();
+            return;
+        }
         // did not find another way to update the scrollbar after adding more changes...
         scrollPane.getVerticalScrollBar().setValue(scrollPane.getVerticalScrollBar().getValue() - 1);
     }
@@ -443,7 +489,111 @@ public class GerritChangeListPanel extends JPanel implements DataProvider {
         // a right-click on the header leaves the column under it as the dragged one, as the menu takes the release;
         // the header would go on painting that column of the old model, at index -1, until the next click on it
         table.getTableHeader().setDraggedColumn(null);
-        table.setModelAndUpdateColumns(new ListTableModel<ChangeInfo>(columns.create(changes), changes, 0));
+        ColumnInfo[] created = columns.create(changes);
+        if (grouping == ChangeGrouping.NONE) {
+            table.setModelAndUpdateColumns(new ListTableModel<ChangeInfo>(created, changes, 0));
+        } else {
+            table.setModelAndUpdateColumns(new ListTableModel<ChangeInfo>(groupColumns(created), buildRows(), 0));
+        }
+    }
+
+    @NotNull
+    public ChangeGrouping getGrouping() {
+        return grouping;
+    }
+
+    public void setGrouping(@NotNull ChangeGrouping grouping) {
+        if (grouping == this.grouping) {
+            return;
+        }
+        this.grouping = grouping;
+        GerritSettings.getInstance().setGroupChangesBy(grouping);
+        ChangeInfo previouslySelected = table.getSelectedObject();
+        replacingChanges = true;
+        try {
+            initModel();
+        } finally {
+            replacingChanges = false;
+        }
+        reselect(previouslySelected);
+    }
+
+    private boolean isGroupRow(int row) {
+        return row >= 0 && row < table.getRowCount() && table.getRow(row) instanceof ChangeGroupRow;
+    }
+
+    /**
+     * A click on a group row folds or unfolds it; moving the selection with the keyboard steps over it.
+     */
+    private void groupRowTargeted(int row, int column) {
+        AWTEvent event = EventQueue.getCurrentEvent();
+        if (event instanceof MouseEvent) {
+            MouseEvent mouseEvent = (MouseEvent) event;
+            if (mouseEvent.getID() == MouseEvent.MOUSE_PRESSED && mouseEvent.getClickCount() == 1
+                && SwingUtilities.isLeftMouseButton(mouseEvent)) {
+                ChangeGroupRow groupRow = (ChangeGroupRow) table.getRow(row);
+                String key = groupRow.getGroup().getKey();
+                if (!collapsedGroups.remove(key)) {
+                    collapsedGroups.add(key);
+                }
+                updateRows();
+            }
+            return;
+        }
+        int selected = table.getSelectedRow();
+        int direction = selected < 0 || row > selected ? 1 : -1;
+        for (int next = row + direction; next >= 0 && next < table.getRowCount(); next += direction) {
+            if (!(table.getRow(next) instanceof ChangeGroupRow)) {
+                table.changeSelection(next, column, false, false);
+                return;
+            }
+        }
+    }
+
+    private void updateRows() {
+        ChangeInfo previouslySelected = table.getSelectedObject();
+        replacingChanges = true;
+        try {
+            table.getListTableModel().setItems(buildRows());
+        } finally {
+            replacingChanges = false;
+        }
+        reselect(previouslySelected);
+    }
+
+    private List<ChangeInfo> buildRows() {
+        List<ChangeGroups.Group> groups = grouping == ChangeGrouping.TOPIC
+            ? ChangeGroups.byTopic(changes)
+            : ChangeGroups.byStack(changes);
+        List<ChangeInfo> rows = new ArrayList<>();
+        stackPositions.clear();
+        for (ChangeGroups.Group group : groups) {
+            boolean collapsed = collapsedGroups.contains(group.getKey());
+            rows.add(new ChangeGroupRow(group, collapsed));
+            if (!collapsed) {
+                for (ChangeInfo change : group.getChanges()) {
+                    rows.add(change);
+                    String position = group.positionOf(change);
+                    if (position != null) {
+                        stackPositions.put(change, position);
+                    }
+                }
+            }
+        }
+        return rows;
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private ColumnInfo[] groupColumns(ColumnInfo[] columns) {
+        String subject = GerritBundle.message("column.subject");
+        ColumnInfo[] grouped = new ColumnInfo[columns.length];
+        for (int i = 0; i < columns.length; i++) {
+            GroupedColumn.Role role = i == 0 ? GroupedColumn.Role.ARROW
+                : subject.equals(columns[i].getName()) ? GroupedColumn.Role.TITLE
+                : GroupedColumn.Role.OTHER;
+            grouped[i] = new GroupedColumn(columns[i], role, stackPositions::get);
+        }
+        return grouped;
     }
 
     /**
