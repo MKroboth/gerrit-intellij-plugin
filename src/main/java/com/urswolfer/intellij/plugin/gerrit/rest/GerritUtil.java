@@ -1,6 +1,7 @@
 /*
  * Copyright 2000-2011 JetBrains s.r.o.
  * Copyright 2013-2018 Urs Wolfer
+ * Modified 2026 by Maximilian Kroboth: saving and deleting a draft comment can report a failure to the caller.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -670,6 +671,18 @@ public final class GerritUtil {
                                  final DraftInput draftInput,
                                  final Project project,
                                  final Consumer<CommentInfo> consumer) {
+        saveDraftComment(changeNr, revision, draftInput, project, consumer, null);
+    }
+
+    /**
+     * @param onError run on the EDT after the failure was reported
+     */
+    public void saveDraftComment(final int changeNr,
+                                 final String revision,
+                                 final DraftInput draftInput,
+                                 final Project project,
+                                 final Consumer<CommentInfo> consumer,
+                                 @Nullable final Runnable onError) {
         Supplier<CommentInfo> supplier = new Supplier<CommentInfo>() {
             @Override
             public CommentInfo get() {
@@ -689,7 +702,7 @@ public final class GerritUtil {
                 }
             }
         };
-        accessGerrit(supplier, consumer, project, "Failed to save draft comment");
+        accessGerrit(supplier, consumer, project, "Failed to save draft comment", onError);
     }
 
     public void deleteDraftComment(final int changeNr,
@@ -697,6 +710,18 @@ public final class GerritUtil {
                                    final String draftCommentId,
                                    final Project project,
                                    final Consumer<Void> consumer) {
+        deleteDraftComment(changeNr, revision, draftCommentId, project, consumer, null);
+    }
+
+    /**
+     * @param onError run on the EDT after the failure was reported
+     */
+    public void deleteDraftComment(final int changeNr,
+                                   final String revision,
+                                   final String draftCommentId,
+                                   final Project project,
+                                   final Consumer<Void> consumer,
+                                   @Nullable final Runnable onError) {
         Supplier<Void> supplier = new Supplier<Void>() {
             @Override
             public Void get() {
@@ -708,7 +733,7 @@ public final class GerritUtil {
                 }
             }
         };
-        accessGerrit(supplier, consumer, project, "Failed to delete draft comment");
+        accessGerrit(supplier, consumer, project, "Failed to delete draft comment", onError);
     }
 
     private boolean testConnection(GerritAuthData gerritAuthData) throws RestApiException {
@@ -845,6 +870,14 @@ public final class GerritUtil {
                               final Consumer<T> consumer,
                               final Project project,
                               final String errorMessage) {
+        accessGerrit(supplier, consumer, project, errorMessage, null);
+    }
+
+    private <T> void accessGerrit(final Supplier<T> supplier,
+                              final Consumer<T> consumer,
+                              final Project project,
+                              final String errorMessage,
+                              @Nullable final Runnable onError) {
         ApplicationManager.getApplication().invokeLater(new Runnable() {
             @Override
             public void run() {
@@ -871,6 +904,9 @@ public final class GerritUtil {
                         } catch (RuntimeException e) {
                             if (errorMessage != null) {
                                 notifyError(e, errorMessage, project);
+                                if (onError != null) {
+                                    ApplicationManager.getApplication().invokeLater(onError);
+                                }
                             } else {
                                 throw e;
                             }
