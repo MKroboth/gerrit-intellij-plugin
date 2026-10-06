@@ -3,7 +3,7 @@
  * Copyright 2013-2018 Urs Wolfer
  * Modified 2026 by Maximilian Kroboth: saving and deleting a draft comment can report a failure to the caller;
  * the change list asks for the commits it groups stacks by; comments of every patch set, file diffs, drafts and
- * change messages and comment links are read.
+ * change messages, comment links and file contents are read.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -652,6 +652,29 @@ public final class GerritUtil {
             } catch (RestApiException e) {
                 notifyError(e, "Failed to get Gerrit comments.", project);
                 return Collections.emptyMap();
+            }
+        };
+        accessGerrit(supplier, consumer, project);
+    }
+
+    /**
+     * A file as it is in a patch set; null when it is not there or cannot be read.
+     */
+    public void getFileContent(final int changeNr,
+                               final String revision,
+                               final String path,
+                               final Project project,
+                               final Consumer<String> consumer) {
+        Supplier<String> supplier = () -> {
+            try {
+                // asked for JSON, Gerrit sends the text as a JSON string rather than base64
+                return gerritApi().restClient().getRequest(
+                    "/changes/" + changeNr + "/revisions/" + revision + "/files/"
+                        + URLEncoder.encode(path, StandardCharsets.UTF_8).replace("+", "%20") + "/content")
+                    .getAsString();
+            } catch (Exception e) {
+                LOG.warn("Failed to read " + path + " of " + changeNr + " at " + revision, e);
+                return null;
             }
         };
         accessGerrit(supplier, consumer, project);

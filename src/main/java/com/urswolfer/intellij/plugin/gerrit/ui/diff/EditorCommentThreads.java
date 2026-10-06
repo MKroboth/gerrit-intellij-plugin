@@ -24,16 +24,26 @@ import com.google.gerrit.extensions.common.CommentInfo;
 import com.intellij.codeInsight.highlighting.HighlightManager;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.command.WriteCommandAction;
+import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Inlay;
 import com.intellij.openapi.editor.LogicalPosition;
 import com.intellij.openapi.editor.colors.EditorColors;
 import com.intellij.openapi.editor.colors.TextAttributesKey;
 import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.editor.markup.RangeHighlighter;
+import com.intellij.openapi.fileEditor.FileDocumentManager;
+import com.intellij.openapi.fileEditor.OpenFileDescriptor;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.Disposer;
+import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.openapi.vfs.ReadonlyStatusHandler;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.urswolfer.intellij.plugin.gerrit.GerritSettings;
+import com.urswolfer.intellij.plugin.gerrit.git.GerritGitUtil;
 import com.urswolfer.intellij.plugin.gerrit.rest.GerritUtil;
+import git4idea.repo.GitRepository;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -48,6 +58,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -106,6 +117,66 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
     @Override
     public List<CommentMarkdown.Link> commentLinks() {
         return commentLinks;
+    }
+
+    /**
+     * Each file the fix touches has to be as it is in the comment's patch set: elsewhere its ranges may point at other
+     * text. Then the fix is one command, undone at once, and the first file opens where it changed.
+     */
+    @Override
+    public void applyFix(@NotNull CommentInfo comment, @NotNull Fixes.Fix fix) {
+        Optional<GitRepository> repository = GerritGitUtil.getInstance().getRepositoryForChange(project, changeInfo);
+        if (!repository.isPresent()) {
+            Messages.showWarningDialog(project, "No local repository was found for this change.", "Apply Fix");
+            return;
+        }
+        Map<String, List<Fixes.Replacement>> byPath = new LinkedHashMap<>();
+        for (Fixes.Replacement replacement : fix.replacements) {
+            byPath.computeIfAbsent(replacement.path, path -> new ArrayList<>()).add(replacement);
+        }
+        String revision = revisionOf(origins.get(comment.id));
+        Map<Document, List<Fixes.Replacement>> documents = new LinkedHashMap<>();
+        List<String> paths = new ArrayList<>(byPath.keySet());
+        checkAndApply(repository.get(), revision, paths, 0, byPath, documents);
+    }
+
+    private void checkAndApply(GitRepository repository, String revision, List<String> paths, int index,
+                               Map<String, List<Fixes.Replacement>> byPath,
+                               Map<Document, List<Fixes.Replacement>> documents) {
+        if (index == paths.size()) {
+            List<VirtualFile> files = documents.keySet().stream()
+                .map(document -> FileDocumentManager.getInstance().getFile(document))
+                .collect(Collectors.toList());
+            if (ReadonlyStatusHandler.getInstance(project).ensureFilesWritable(files).hasReadonlyFiles()) return;
+            WriteCommandAction.runWriteCommandAction(project, "Apply Fix", null, () -> {
+                for (Map.Entry<Document, List<Fixes.Replacement>> entry : documents.entrySet()) {
+                    entry.getKey().setText(Fixes.apply(entry.getKey().getText(), entry.getValue()));
+                }
+            });
+            Fixes.Replacement first = byPath.get(paths.get(0)).get(0);
+            VirtualFile file = repository.getRoot().findFileByRelativePath(paths.get(0));
+            if (file != null) {
+                new OpenFileDescriptor(project, file, Math.max(first.startLine - 1, 0), first.startCharacter)
+                    .navigate(true);
+            }
+            return;
+        }
+        String path = paths.get(index);
+        VirtualFile file = repository.getRoot().findFileByRelativePath(path);
+        Document document = file != null ? FileDocumentManager.getInstance().getDocument(file) : null;
+        if (document == null) {
+            Messages.showWarningDialog(project, path + " is not in the local copy.", "Apply Fix");
+            return;
+        }
+        gerritUtil.getFileContent(changeInfo._number, revision, path, project, content -> {
+            if (content == null || !StringUtil.convertLineSeparators(content).equals(document.getText())) {
+                Messages.showWarningDialog(project, "The local " + path + " is not the one of the comment's patch set,"
+                    + " so the fix could land in the wrong place. Check out that patch set first.", "Apply Fix");
+                return;
+            }
+            documents.put(document, byPath.get(path));
+            checkAndApply(repository, revision, paths, index + 1, byPath, documents);
+        });
     }
 
     void onDraftsChanged(@NotNull Runnable draftsChanged) {

@@ -81,6 +81,11 @@ final class CommentThreadPanel extends CommentCard {
          */
         @NotNull
         List<CommentMarkdown.Link> commentLinks();
+
+        /**
+         * Applies a fix a comment suggests to the local copy of its files, if they are those of its patch set.
+         */
+        void applyFix(@NotNull CommentInfo comment, @NotNull Fixes.Fix fix);
     }
 
     private final Project project;
@@ -274,6 +279,18 @@ final class CommentThreadPanel extends CommentCard {
             content.add(draftEditor, BorderLayout.CENTER);
         } else {
             content.add(createBody(comment.message, controller.commentLinks()), BorderLayout.CENTER);
+            List<Fixes.Fix> fixes = Fixes.of(comment);
+            if (!fixes.isEmpty()) {
+                JPanel links = new JPanel();
+                links.setOpaque(false);
+                links.setLayout(new BoxLayout(links, BoxLayout.X_AXIS));
+                for (Fixes.Fix fix : fixes) {
+                    if (links.getComponentCount() > 0) links.add(Box.createHorizontalStrut(JBUI.scale(12)));
+                    links.add(new LinkLabel<>("Apply fix: " + fix.description, AllIcons.Actions.IntentionBulb,
+                        (source, data) -> controller.applyFix(comment, fix)));
+                }
+                content.add(links, BorderLayout.SOUTH);
+            }
         }
         return withAvatar(AvatarIcon.of(comment, AvatarIcon.commentSize()), content);
     }
