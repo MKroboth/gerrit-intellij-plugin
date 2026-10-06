@@ -1,5 +1,6 @@
 /*
  * Copyright 2026 Urs Wolfer
+ * Modified 2026 by Maximilian Kroboth: covers the excerpt of a comment written in Markdown.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -130,6 +131,7 @@ public class CommentThreadsTest {
     public void testAnExcerptIsOneLine() {
         Assert.assertEquals(CommentThreads.excerpt(" first\n\n  second\tthird "), "first second third");
         Assert.assertEquals(CommentThreads.excerpt(null), "");
+        Assert.assertEquals(CommentThreads.excerpt("**Done:** see `call()`"), "Done: see call()");
     }
 
     /** A fold of lines 2 to 4 of "a\nb\nc\nd\ne", from the start of line 2 to the end of line 4. */

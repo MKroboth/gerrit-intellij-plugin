@@ -1,6 +1,7 @@
 /*
  * Copyright 2026 Urs Wolfer
- * Modified 2026 by Maximilian Kroboth: a "+" in the gutter starts a comment.
+ * Modified 2026 by Maximilian Kroboth: a "+" in the gutter starts a comment, and Previous and Next under each thread
+ * walk the comments.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +21,7 @@ package com.urswolfer.intellij.plugin.gerrit.ui.diff;
 import com.google.gerrit.extensions.client.Comment;
 import com.google.gerrit.extensions.common.ChangeInfo;
 import com.google.gerrit.extensions.common.CommentInfo;
+import com.intellij.codeInsight.hint.HintManager;
 import com.intellij.diff.util.Side;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.AnAction;
@@ -41,6 +43,7 @@ import com.intellij.openapi.editor.markup.RangeHighlighter;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Key;
+import com.urswolfer.intellij.plugin.gerrit.GerritBundle;
 import com.urswolfer.intellij.plugin.gerrit.GerritSettings;
 import org.jetbrains.annotations.Nullable;
 
@@ -642,6 +645,26 @@ final class DiffComments {
             public void setFolded(Comment comment, boolean isFolded) {
                 if (comment.id != null) {
                     folded.put(comment.id, isFolded);
+                }
+            }
+
+            @Override
+            public boolean canWalk() {
+                return editor.getUserData(CommentNavigator.KEY) != null;
+            }
+
+            /** From the line of the thread, wherever the caret is: the navigator goes from the caret. */
+            @Override
+            public void walk(boolean forward) {
+                CommentNavigator navigator = editor.getUserData(CommentNavigator.KEY);
+                LineMapping mapping = getMapping(editor);
+                if (navigator == null || mapping == null || editor.isDisposed()) return;
+                int line = threadLine(editor, mapping, thread.root);
+                if (line < 0) return;
+                editor.getCaretModel().moveToOffset(editor.getDocument().getLineStartOffset(line));
+                if (!navigator.go(editor, forward)) {
+                    HintManager.getInstance().showInformationHint(editor,
+                        forward ? GerritBundle.message("diff.noComment.down") : GerritBundle.message("diff.noComment.up"));
                 }
             }
         };

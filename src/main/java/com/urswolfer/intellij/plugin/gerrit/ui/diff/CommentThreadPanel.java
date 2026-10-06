@@ -1,6 +1,6 @@
 /*
  * Copyright 2026 Urs Wolfer
- * Modified 2026 by Maximilian Kroboth: renders comments as Markdown.
+ * Modified 2026 by Maximilian Kroboth: renders comments as Markdown, and Previous and Next under each thread.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -95,6 +95,12 @@ final class CommentThreadPanel extends JPanel implements DataProvider {
         boolean isFolded(Comment comment);
 
         void setFolded(Comment comment, boolean folded);
+
+        /** Whether the caret can be taken to the thread above or below, as in a diff. */
+        boolean canWalk();
+
+        /** Takes the caret from this thread to the next one with a comment above or below it. */
+        void walk(boolean forward);
     }
 
     private final CommentThreads.Thread<?> thread;
@@ -346,11 +352,12 @@ final class CommentThreadPanel extends JPanel implements DataProvider {
         boolean unresolved = thread.isUnresolved();
         JBLabel state = new JBLabel(GerritBundle.message(unresolved ? "diff.unresolved" : "diff.resolved"));
         state.setForeground(UIUtil.getContextHelpForeground());
-        if (thread.hasDraft() || !actions.canComment()) {
-            return links(0, state);
-        }
         List<JComponent> row = new ArrayList<>(); // the state, then the links, which a click on one disables
         row.add(state);
+        if (thread.hasDraft() || !actions.canComment()) {
+            row.addAll(walkLinks());
+            return links(0, row.toArray(new JComponent[0]));
+        }
         List<ActionLink> links = new ArrayList<>();
         ActionLink reply = link(GerritBundle.message("diff.reply"));
         reply.addActionListener(e -> performOnce(actions.reply(last, reply), reply, links));
@@ -363,7 +370,18 @@ final class CommentThreadPanel extends JPanel implements DataProvider {
             }
         }
         row.addAll(links);
+        row.addAll(walkLinks());
         return links(0, row.toArray(new JComponent[0]));
+    }
+
+    /** Previous and Next, which take neither a request nor a form, and stay enabled. */
+    private List<JComponent> walkLinks() {
+        if (!actions.canWalk()) return new ArrayList<>();
+        ActionLink previous = link(GerritBundle.message("diff.thread.previous"));
+        previous.addActionListener(e -> actions.walk(false));
+        ActionLink next = link(GerritBundle.message("diff.thread.next"));
+        next.addActionListener(e -> actions.walk(true));
+        return new ArrayList<>(Arrays.asList(previous, next));
     }
 
     /** Not focusable, as nothing in the panel but the text of a comment, see {@link #getData}. */

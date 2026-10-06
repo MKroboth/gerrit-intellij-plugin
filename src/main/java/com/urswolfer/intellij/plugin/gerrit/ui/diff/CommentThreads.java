@@ -1,5 +1,6 @@
 /*
  * Copyright 2026 Urs Wolfer
+ * Modified 2026 by Maximilian Kroboth: the excerpt of a comment leaves out the emphasis of its Markdown.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -124,9 +125,9 @@ final class CommentThreads {
         return root;
     }
 
-    /** One line, the whitespace of the message collapsed. */
+    /** One line, the whitespace of the message collapsed, and without the emphasis of its Markdown. */
     static String excerpt(@Nullable String message) {
-        return StringUtil.notNullize(message).trim().replaceAll("\\s+", " ");
+        return StringUtil.notNullize(message).replace("**", "").replace("`", "").trim().replaceAll("\\s+", " ");
     }
 
     /** None for a draft, which is the user's own. */
