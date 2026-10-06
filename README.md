@@ -3,6 +3,135 @@
 [![Version](https://img.shields.io/jetbrains/plugin/v/7272)](https://plugins.jetbrains.com/plugin/7272)
 [![Downloads](https://img.shields.io/jetbrains/plugin/d/7272)](https://plugins.jetbrains.com/plugin/7272)
 
+## About this fork
+
+This is a personal fork of
+[uwolfer/gerrit-intellij-plugin](https://github.com/uwolfer/gerrit-intellij-plugin),
+kept by Maximilian Kroboth on the branch `inline-comment-threads`. It adds to
+how review comments are shown and answered, and adds ways to group and act on
+changes in the change list, to suit one particular way of reviewing. Everything
+after the rule which ends this section is the upstream README and describes the
+plugin as a whole.
+
+Many thanks to Urs Wolfer, who started this plugin in 2013 and has looked after
+it ever since, and to everyone who has contributed to it. This fork is built
+entirely on their work: the connection to Gerrit, the tool window, the change
+list, the comment threads in the diff and the editor, and everything else the
+changes below rely on are theirs. For the plugin itself, use the upstream
+repository and the
+[JetBrains Marketplace release](https://plugins.jetbrains.com/plugin/7272).
+Problems with the changes below belong to this fork, not to the upstream
+project; please don't report them there.
+
+### Changes
+
+#### Comments
+
+* Under each thread, Quote starts a reply quoting the last comment, next to
+  Reply, Ack and Done, and Previous and Next take the caret to the comment
+  above or below. Quote is in the menu of a comment's gutter icon as well.
+* A "+" in the gutter, next to the line under the mouse, starts a comment on
+  that line, in a diff and in the editor of a checked-out change. "C" and the
+  context menu start one as well.
+* The threads of earlier patch sets are shown on the newer one too, at the line
+  their text is on now according to Gerrit's diff between the two patch sets.
+  Each names the patch set it was written on, and says "line changed" when its
+  line was rewritten. A reply goes to the patch set the thread is on.
+* While the change has unpublished drafts, a bar above the diff says how many
+  and publishes them, those of every patch set, with a message, the votes you
+  may give, and the review dialog's notify and submit options. A vote left at
+  0 is not sent.
+* R, as in Gerrit's web UI, replies to the thread at the caret or the next one
+  below; on a thread which ends in your draft it edits that draft. The bare
+  letter applies only while the keymap has no shortcut of its own for "Reply to
+  Gerrit Comment Thread", and not in a thread.
+* A comment holding a ```` ```suggestion ```` block, as Gerrit's web UI writes
+  them, or a Gerrit fix suggestion shows an "Apply fix" link. It edits the
+  local file as one undoable change and opens the file there, but only when the
+  local file is the same as in the comment's patch set; otherwise it says so
+  and changes nothing. A comment on the base side of the diff offers no fix.
+
+#### Comment text
+
+* Comments and change messages are rendered as Markdown, as in Gerrit's web
+  UI, with [commonmark-java](https://github.com/commonmark/commonmark-java) and
+  GitHub-style tables, strikethrough and bare links: in the threads, the
+  tooltips of their icons, the preview of a comment being written and the
+  change details. Raw HTML is shown as text, and an image as a link to it.
+* Issue ids in comments and change messages are links, from the Gerrit
+  project's `commentlink` sections and the IDE's Issue Navigation settings.
+
+#### Change list
+
+* "Group by" in the toolbar shows the listed changes in groups that fold: by
+  topic, by the stack their commits form (newest first, each change with its
+  place in the stack, such as "3/8"), by the issue in the commit message's
+  `Issue:` trailer, by hashtag (the first one alphabetically) or by owner.
+  While grouped, the list loads further pages, up to 500 changes, so that a
+  stack is not split. The choice is kept in the settings.
+* A group's row says how many of its changes are approved, how many fail
+  verification, how many sit on an outdated patch set of their parent and need
+  a rebase, and how many threads are open.
+* Right-clicking a stack's row offers Review Stack (the diff of each change in
+  turn, from the base of the stack, with a bar above it to move to the previous
+  or next change), Check Out Top of Stack, and Submit Stack (after asking, it
+  submits the top change, which Gerrit merges together with the changes it
+  builds on). Every group row can fold or unfold all groups.
+* A vote's tooltip in the list also shows what the voter wrote with it, such as
+  a CI server's build result, and a click on the vote opens the first link in
+  that message.
+* A "Conversations" tab next to the change details lists the threads of the
+  selected change that wait for an answer, on every patch set, with their file,
+  line, patch set and last comment. "Whole stack" lists those of every change
+  in its stack. Double-click or Enter opens the diff at the thread.
+
+#### Known limitations
+
+* Review Stack opens a new diff window for each change.
+* The texts the fork adds are in English only; the translations of the upstream
+  plugin show them in English.
+
+### Files
+
+Files changed from upstream carry a "Modified" line in their header that says
+what changed; new files carry their own copyright line. Both are under the
+Apache License 2.0, as the rest of the plugin is. The upstream files changed
+are:
+
+* `build.gradle`: the Markdown libraries.
+* `GerritSettings`, `GerritSettingsTest`: the setting for grouping changes.
+* `GerritUtil`: asks the change list for the current commit, and reads the
+  comments and drafts of every patch set, file diffs, change messages, comment
+  links and file texts.
+* `GerritCommentsDiffExtension`, `DiffComments`, `EditorComments`,
+  `CommentThreadPanel`, `CommentThreads`, `CommentGutterIconRenderer`,
+  `CommentForm`, `AddCommentAction`, `AddCommentActionBuilder`,
+  `AddCommentInDiffAction`, `CommentFormTest`, `CommentThreadsTest`: the
+  threads of earlier patch sets, the bars above the diff, Quote, Previous and
+  Next, the "+" in the gutter, R, Markdown, issue links and suggested fixes.
+* `SafeHtmlTextEditor`: the preview as Markdown.
+* `GerritChangeListPanel`, `GerritChangeColumns`, `GerritToolWindow`:
+  grouping, the group rows' menu, vote messages and the Conversations tab.
+* `GerritChangeDetailsPanel`: change messages as Markdown, with issue links.
+* `RepositoryChangesBrowserProvider`: opens the diff of a given file of a
+  change, for the Conversations tab.
+* `plugin.xml`, `GerritBundle.properties`: the action that answers a thread,
+  and the texts of the fork's additions.
+
+Everything else is in new classes, mostly in `ui/diff`. The fork also bundles
+[commonmark-java](https://github.com/commonmark/commonmark-java) (BSD 2-Clause
+License) and [autolink-java](https://github.com/robinst/autolink-java) (MIT
+License), whose licence texts ship inside their jars.
+
+### Building and installing
+
+It is built and installed like the upstream plugin: `./gradlew buildPlugin`,
+then "Install Plugin from Disk" with the zip in `build/distributions`. The
+plugin has the same id as the one on the JetBrains Marketplace, so an update
+from there replaces it.
+
+---
+
 Unofficial [IntelliJ Platform](https://www.jetbrains.com/idea/) plugin for
 [Gerrit Code Review](https://www.gerritcodereview.com/): review, fetch and push
 changes without leaving your IDE.
