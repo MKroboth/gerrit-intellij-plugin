@@ -193,8 +193,9 @@ public final class ChangeGroups {
     }
 
     /**
-     * Where a group of changes stands: how many have their Code-Review approval, how many fail verification, and how
-     * many threads are open. What is zero is left out, the approvals excepted.
+     * Where a group of changes stands: how many have their Code-Review approval, how many fail verification, how many
+     * sit on an outdated patch set of their parent, which Gerrit does not submit, and how many threads are open. What
+     * is zero is left out, the approvals excepted.
      */
     @NotNull
     public static String statusOf(@NotNull List<ChangeInfo> changes) {
@@ -210,6 +211,14 @@ public final class ChangeGroups {
         status.add(GerritBundle.message("group.status.approved", String.valueOf(approved),
             String.valueOf(changes.size())));
         if (failing > 0) status.add(GerritBundle.message("group.status.failing", String.valueOf(failing)));
+        Map<ChangeInfo, ChangeInfo> parents = findParents(changes);
+        int outdated = 0;
+        for (Map.Entry<ChangeInfo, ChangeInfo> child : parents.entrySet()) {
+            if (!Objects.equals(parentCommit(child.getKey()), child.getValue().currentRevision)) outdated++;
+        }
+        if (outdated > 0) {
+            status.add(GerritBundle.message("group.status.rebase", outdated, String.valueOf(outdated)));
+        }
         if (openThreads > 0) {
             status.add(GerritBundle.message("group.status.threads", openThreads, String.valueOf(openThreads)));
         }

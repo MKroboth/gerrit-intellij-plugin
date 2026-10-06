@@ -1,7 +1,7 @@
 /*
  * Copyright 2026 Urs Wolfer
- * Modified 2026 by Maximilian Kroboth: loads the comments of earlier patch sets as well, puts a bar to publish the
- * drafts above the diff, and binds R to answer a thread.
+ * Modified 2026 by Maximilian Kroboth: loads the comments of earlier patch sets as well, puts bars to publish the
+ * drafts and to step through a stack above the diff, and binds R to answer a thread.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -52,7 +52,9 @@ import com.intellij.openapi.vcs.FilePath;
 import com.intellij.openapi.vcs.changes.Change;
 import com.intellij.openapi.vcs.changes.ChangesUtil;
 import com.intellij.openapi.vcs.changes.actions.diff.ChangeDiffRequestProducer;
+import com.intellij.ui.EditorNotificationPanel;
 import com.intellij.ui.PopupHandler;
+import com.intellij.ui.components.panels.VerticalLayout;
 import com.urswolfer.intellij.plugin.gerrit.GerritAccountsListener;
 import com.urswolfer.intellij.plugin.gerrit.ui.GerritChangesListener;
 import com.urswolfer.intellij.plugin.gerrit.GerritBundle;
@@ -65,6 +67,7 @@ import com.urswolfer.intellij.plugin.gerrit.util.PathUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import javax.swing.*;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -170,7 +173,7 @@ public class GerritCommentsDiffExtension extends DiffExtension {
             addActions(comments, editor);
         }
 
-        DraftsBar draftsBar = addDraftsBar(viewer, comments, project, changeInfo, selectedRevisionId);
+        DraftsBar draftsBar = addBars(viewer, comments, project, changeInfo, selectedRevisionId);
 
         // a review publishes the drafts, and another account sees other drafts, or some at all; but only from the
         // server the diff came from, as another one has another change of the number
@@ -280,21 +283,40 @@ public class GerritCommentsDiffExtension extends DiffExtension {
     }
 
     /**
-     * Above the editors of the viewer, as the platform's own notifications of a diff are; those are read from the
-     * request when the viewer is built, before an extension hears of it.
+     * The bars above the editors of the viewer, as the platform's own notifications of a diff are: the drafts to
+     * publish, and where the change is in a stack being reviewed. The platform reads its notifications from the request
+     * when the viewer is built, before an extension hears of it.
      *
      * TODO once the minimum IDE has DiffUtil.addNotification with a DiffNotificationProvider (2020.3 has not, 2026.2
-     * has): add the bar to the context where the diff is opened instead, and drop the top panel of the viewer.
+     * has): add the bars to the context where the diff is opened instead, and drop the top panel of the viewer.
+     *
+     * @return the bar of the drafts, null where the viewer has no room for it
      */
     @Nullable
-    private static DraftsBar addDraftsBar(FrameDiffTool.DiffViewer viewer, DiffComments comments, Project project,
-                                          ChangeInfo changeInfo, String selectedRevisionId) {
+    private static DraftsBar addBars(FrameDiffTool.DiffViewer viewer, DiffComments comments, Project project,
+                                     ChangeInfo changeInfo, String selectedRevisionId) {
         if (!(viewer.getComponent() instanceof DiffPanelBase)) return null;
-        DraftsBar bar = new DraftsBar(project, changeInfo, selectedRevisionId);
-        ((DiffPanelBase) viewer.getComponent()).setTopPanel(bar.getComponent());
-        comments.addDraftsListener(bar::refresh);
-        bar.refresh();
-        return bar;
+        JPanel bars = new JPanel(new VerticalLayout(0));
+        DraftsBar draftsBar = new DraftsBar(project, changeInfo, selectedRevisionId);
+        bars.add(draftsBar.getComponent());
+        StackReview review = StackReview.of(changeInfo);
+        if (review != null) {
+            int index = review.indexOf(changeInfo);
+            EditorNotificationPanel stackBar = new EditorNotificationPanel();
+            stackBar.setText(GerritBundle.message("stack.bar.text", String.valueOf(index + 1),
+                String.valueOf(review.size())));
+            if (index > 0) {
+                stackBar.createActionLabel(GerritBundle.message("stack.bar.previous"), () -> review.open(index - 1));
+            }
+            if (index < review.size() - 1) {
+                stackBar.createActionLabel(GerritBundle.message("stack.bar.next"), () -> review.open(index + 1));
+            }
+            bars.add(stackBar);
+        }
+        ((DiffPanelBase) viewer.getComponent()).setTopPanel(bars);
+        comments.addDraftsListener(draftsBar::refresh);
+        draftsBar.refresh();
+        return draftsBar;
     }
 
     /**
