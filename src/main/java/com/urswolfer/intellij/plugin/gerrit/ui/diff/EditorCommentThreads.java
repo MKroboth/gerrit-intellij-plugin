@@ -23,6 +23,7 @@ import com.google.gerrit.extensions.common.ChangeInfo;
 import com.google.gerrit.extensions.common.CommentInfo;
 import com.intellij.codeInsight.highlighting.HighlightManager;
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.editor.Inlay;
 import com.intellij.openapi.editor.colors.EditorColors;
 import com.intellij.openapi.editor.colors.TextAttributesKey;
 import com.intellij.openapi.editor.ex.EditorEx;
@@ -34,6 +35,7 @@ import com.urswolfer.intellij.plugin.gerrit.rest.GerritUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.awt.Rectangle;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -65,6 +67,8 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
 
     private final Map<String, CommentInfo> comments = new LinkedHashMap<>();
     private final Map<String, ShownThread> shownThreads = new HashMap<>();
+    /** The shown threads from the top of the file to the bottom. */
+    private final List<ShownThread> order = new ArrayList<>();
     private final Map<Integer, NewThread> newThreads = new HashMap<>();
 
     EditorCommentThreads(@NotNull Project project,
@@ -165,15 +169,19 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
 
     private void refresh() {
         Set<String> rootIds = new HashSet<>();
+        order.clear();
         for (CommentThread thread : CommentThread.group(comments.values())) {
             String rootId = thread.getRoot().id;
             rootIds.add(rootId);
             ShownThread shown = shownThreads.get(rootId);
             if (shown == null) {
-                show(thread);
+                shown = show(thread);
             } else if (!shown.signature.equals(signature(thread))) {
                 shown.signature = signature(thread);
                 shown.panel.setThread(thread);
+            }
+            if (shown != null) {
+                order.add(shown);
             }
         }
         for (Iterator<Map.Entry<String, ShownThread>> it = shownThreads.entrySet().iterator(); it.hasNext(); ) {
@@ -183,12 +191,33 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
                 it.remove();
             }
         }
+        for (int i = 0; i < order.size(); i++) {
+            order.get(i).panel.setNeighbours(i > 0, i < order.size() - 1);
+        }
     }
 
-    private void show(CommentThread thread) {
+    @Override
+    public void reveal(@NotNull CommentThreadPanel from, int direction) {
+        int index = -1;
+        for (int i = 0; i < order.size(); i++) {
+            if (order.get(i).panel == from) index = i;
+        }
+        int target = index + direction;
+        if (index < 0 || target < 0 || target >= order.size()) return;
+        ShownThread shown = order.get(target);
+        shown.panel.expand();
+        Rectangle bounds = shown.inlay.getBounds();
+        if (bounds != null) {
+            // the line the thread is on stays in view above it
+            editor.getScrollingModel().scrollVertically(Math.max(0, bounds.y - 2 * editor.getLineHeight()));
+        }
+    }
+
+    @Nullable
+    private ShownThread show(CommentThread thread) {
         CommentThreadPanel panel = new CommentThreadPanel(project, this, thread);
-        Disposable inlay = inlays.insert(toLineIndex(thread.getLine()), panel);
-        if (inlay == null) return;
+        Inlay<?> inlay = inlays.insert(toLineIndex(thread.getLine()), panel);
+        if (inlay == null) return null;
         ShownThread shown = new ShownThread();
         shown.panel = panel;
         shown.inlay = inlay;
@@ -198,6 +227,7 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
             shown.rangeHighlighter = highlightRange(range);
         }
         shownThreads.put(thread.getRoot().id, shown);
+        return shown;
     }
 
     private void hide(ShownThread shown) {
@@ -237,7 +267,7 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
 
     private static final class ShownThread {
         CommentThreadPanel panel;
-        Disposable inlay;
+        Inlay<?> inlay;
         List<String> signature;
         @Nullable
         RangeHighlighter rangeHighlighter;

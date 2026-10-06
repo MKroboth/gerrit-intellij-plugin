@@ -60,7 +60,7 @@ final class EditorCommentInlays implements Disposable {
      * @param line 0-based; a component for line -1 goes above the first line
      */
     @Nullable
-    Disposable insert(int line, @NotNull JComponent component) {
+    Inlay<?> insert(int line, @NotNull JComponent component) {
         if (Disposer.isDisposed(this)) return null;
         boolean above = line < 0;
         int offset = above ? 0 : editor.getDocument().getLineEndOffset(line);

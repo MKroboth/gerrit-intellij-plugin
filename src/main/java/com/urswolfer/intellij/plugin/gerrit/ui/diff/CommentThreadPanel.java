@@ -18,6 +18,7 @@ package com.urswolfer.intellij.plugin.gerrit.ui.diff;
 
 import com.google.gerrit.extensions.common.AccountInfo;
 import com.google.gerrit.extensions.common.CommentInfo;
+import com.intellij.icons.AllIcons;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.ui.BrowserHyperlinkListener;
@@ -32,11 +33,14 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.Box;
 import javax.swing.BoxLayout;
+import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JEditorPane;
 import javax.swing.JPanel;
 import java.awt.BorderLayout;
 import java.awt.Font;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -54,6 +58,11 @@ final class CommentThreadPanel extends CommentCard {
                   @NotNull Runnable onSaved, @NotNull Runnable onFailed);
 
         void delete(@NotNull CommentInfo draft);
+
+        /**
+         * @param direction -1 for the thread above, 1 for the one below
+         */
+        void reveal(@NotNull CommentThreadPanel from, int direction);
     }
 
     private final Project project;
@@ -68,6 +77,8 @@ final class CommentThreadPanel extends CommentCard {
     @Nullable
     private CommentEditorPanel draftEditor;
     private boolean sendingDone;
+    private boolean hasPrevious;
+    private boolean hasNext;
 
     CommentThreadPanel(@NotNull Project project, @NotNull Controller controller, @NotNull CommentThread thread) {
         this.project = project;
@@ -83,6 +94,20 @@ final class CommentThreadPanel extends CommentCard {
         rebuild();
     }
 
+    void setNeighbours(boolean hasPrevious, boolean hasNext) {
+        if (hasPrevious == this.hasPrevious && hasNext == this.hasNext) return;
+        this.hasPrevious = hasPrevious;
+        this.hasNext = hasNext;
+        rebuild();
+    }
+
+    void expand() {
+        if (!expanded) {
+            expanded = true;
+            rebuild();
+        }
+    }
+
     private void rebuild() {
         JPanel card = getContent();
         card.removeAll();
@@ -95,8 +120,8 @@ final class CommentThreadPanel extends CommentCard {
             }
             if (replyEditor != null) {
                 card.add(replyEditor);
-            } else if (controller.canComment() && !CommentThread.isDraft(thread.getLast())) {
-                card.add(createActions());
+            } else {
+                card.add(createFooter());
             }
         }
         card.revalidate();
@@ -118,15 +143,20 @@ final class CommentThreadPanel extends CommentCard {
     private JComponent createCollapsedRow() {
         CommentInfo root = thread.getRoot();
         String[] lines = StringUtil.splitByLines(StringUtil.notNullize(root.message));
-        String firstLine = lines.length > 0 ? lines[0] : "";
+        // Gerrit renders comments as Markdown; its emphasis would show as stray characters in one line
+        String firstLine = lines.length > 0 ? lines[0].replace("**", "").replace("`", "") : "";
         int count = thread.getComments().size();
         String text = "Resolved · " + authorName(root) + ": " + StringUtil.shortenTextWithEllipsis(firstLine, 80, 0)
             + (count > 1 ? " (" + count + " comments)" : "");
-        LinkLabel<Object> link = new LinkLabel<>(text, null, (source, data) -> {
-            expanded = true;
-            rebuild();
-        });
-        return row(link, null);
+        LinkLabel<Object> link = new LinkLabel<>(text, null, (source, data) -> expand());
+        JComponent reply = null;
+        if (canReply()) {
+            reply = new LinkLabel<>("Reply", null, (source, data) -> {
+                expanded = true;
+                openReplyEditor();
+            });
+        }
+        return row(link, reply);
     }
 
     private JComponent createHeader() {
@@ -181,18 +211,58 @@ final class CommentThreadPanel extends CommentCard {
         return panel;
     }
 
-    private JComponent createActions() {
-        JPanel links = new JPanel();
-        links.setOpaque(false);
-        links.setLayout(new BoxLayout(links, BoxLayout.X_AXIS));
-        links.add(new LinkLabel<>("Reply", null, (source, data) -> openReplyEditor()));
-        links.add(Box.createHorizontalStrut(JBUI.scale(12)));
-        links.add(new LinkLabel<>("Done", null, (source, data) -> {
-            if (sendingDone) return;
-            sendingDone = true;
-            controller.reply(thread, "Done", true, () -> sendingDone = false, () -> sendingDone = false);
-        }));
-        return row(links, null);
+    /**
+     * Previous and Next walk the threads of this side of the diff; Done answers and resolves in one step.
+     */
+    private JComponent createFooter() {
+        JButton previous = new JButton("Previous", AllIcons.Actions.PreviousOccurence);
+        previous.setEnabled(hasPrevious);
+        previous.addActionListener(e -> controller.reveal(this, -1));
+        JButton next = new JButton("Next", AllIcons.Actions.NextOccurence);
+        next.setEnabled(hasNext);
+        next.addActionListener(e -> controller.reveal(this, 1));
+        JComponent left = buttons(previous, next);
+
+        JComponent right = null;
+        if (canReply()) {
+            List<JButton> answers = new ArrayList<>();
+            if (!thread.isResolved()) {
+                JButton done = new JButton("Done");
+                done.setToolTipText("Reply \"Done\" and resolve the thread");
+                done.addActionListener(e -> {
+                    if (sendingDone) return;
+                    sendingDone = true;
+                    controller.reply(thread, "Done", true, () -> sendingDone = false, () -> sendingDone = false);
+                });
+                answers.add(done);
+            }
+            // painted as the default button of a dialog, which 2020.3 only does for the root pane's default button
+            JButton reply = new JButton("Reply") {
+                @Override
+                public boolean isDefaultButton() {
+                    return true;
+                }
+            };
+            reply.addActionListener(e -> openReplyEditor());
+            answers.add(reply);
+            right = buttons(answers.toArray(new JButton[0]));
+        }
+        return row(left, right);
+    }
+
+    private boolean canReply() {
+        return controller.canComment() && !CommentThread.isDraft(thread.getLast());
+    }
+
+    private static JComponent buttons(JButton... buttons) {
+        JPanel panel = new JPanel();
+        panel.setOpaque(false);
+        panel.setLayout(new BoxLayout(panel, BoxLayout.X_AXIS));
+        for (int i = 0; i < buttons.length; i++) {
+            if (i > 0) panel.add(Box.createHorizontalStrut(JBUI.scale(4)));
+            panel.add(buttons[i]);
+        }
+        return panel;
     }
 
     private void openReplyEditor() {
