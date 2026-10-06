@@ -1,5 +1,6 @@
 /*
  * Copyright 2026 Urs Wolfer
+ * Modified 2026 by Maximilian Kroboth: the list looks up the label of a vote's column.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -458,7 +459,8 @@ public final class GerritChangeColumns {
         }
     }
 
-    private abstract static class GerritChangeColumnIconLabelInfo extends ColumnInfo<ChangeInfo, LabelInfo> {
+    /** A label's votes, whose tooltip text is the label's name, which the list's vote tooltips look up. */
+    abstract static class GerritChangeColumnIconLabelInfo extends ColumnInfo<ChangeInfo, LabelInfo> {
 
         private final String label;
 

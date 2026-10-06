@@ -2,7 +2,8 @@
  * Copyright 2000-2011 JetBrains s.r.o.
  * Copyright 2013-2016 Urs Wolfer
  * Modified 2026 by Maximilian Kroboth: groups the changes by topic, stack, issue, hashtag or owner, with a menu of
- * actions on a group's row, and selects a change or finds its stack for others.
+ * actions on a group's row, and selects a change or finds its stack for others; a vote's tooltip carries its voter's
+ * message, a click opens its link.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +20,10 @@
 
 package com.urswolfer.intellij.plugin.gerrit.ui;
 
+import com.google.gerrit.extensions.common.AccountInfo;
+import com.google.gerrit.extensions.common.ApprovalInfo;
 import com.google.gerrit.extensions.common.ChangeInfo;
+import com.google.gerrit.extensions.common.LabelInfo;
 import com.google.gerrit.extensions.restapi.RestApiException;
 import com.intellij.ide.BrowserUtil;
 import com.intellij.openapi.actionSystem.ActionGroup;
@@ -37,6 +41,7 @@ import com.intellij.openapi.options.ShowSettingsUtil;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
+import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.ui.DoubleClickListener;
 import com.intellij.ui.PopupHandler;
@@ -68,6 +73,7 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.AdjustmentEvent;
 import java.awt.event.AdjustmentListener;
+import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -75,6 +81,7 @@ import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
@@ -122,6 +129,7 @@ public class GerritChangeListPanel extends JPanel implements DataProvider {
     private Runnable clearFilters;
     private Runnable retry;
     private ChangeGrouping grouping;
+    private final VoteMessages voteMessages;
     private final Set<String> collapsedGroups = new HashSet<>();
     private final Map<ChangeInfo, String> stackPositions = new IdentityHashMap<>();
 
@@ -134,7 +142,14 @@ public class GerritChangeListPanel extends JPanel implements DataProvider {
         this.changes = new ArrayList<>();
         this.grouping = GerritSettings.getInstance().getGroupChangesBy();
 
+        this.voteMessages = new VoteMessages(project, () -> {});
         this.table = new TableView<ChangeInfo>() {
+            @Override
+            public String getToolTipText(@NotNull MouseEvent event) {
+                String vote = voteToolTip(event);
+                return vote != null ? vote : super.getToolTipText(event);
+            }
+
             @Override
             public void changeSelection(int row, int column, boolean toggle, boolean extend) {
                 if (isGroupRow(row)) {
@@ -181,6 +196,14 @@ public class GerritChangeListPanel extends JPanel implements DataProvider {
 
         updateModel(changes);
         table.setStriped(true);
+        table.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 1 && SwingUtilities.isLeftMouseButton(e)) {
+                    openVoteLink(e);
+                }
+            }
+        });
 
         setLayout(new BorderLayout());
         scrollPane = ScrollPaneFactory.createScrollPane(table);
@@ -643,6 +666,89 @@ public class GerritChangeListPanel extends JPanel implements DataProvider {
             updateRows();
         }));
         return actions;
+    }
+
+    /**
+     * The vote under the mouse, the change and voter of a label's cell; null elsewhere.
+     */
+    @Nullable
+    private Pair<ChangeInfo, Pair<String, AccountInfo>> voteAt(MouseEvent event) {
+        int row = table.rowAtPoint(event.getPoint());
+        int column = table.columnAtPoint(event.getPoint());
+        if (row < 0 || column < 0 || isGroupRow(row)) {
+            return null;
+        }
+        ColumnInfo info = table.getListTableModel().getColumnInfos()[table.convertColumnIndexToModel(column)];
+        if (info instanceof GroupedColumn) {
+            info = ((GroupedColumn<?>) info).getDelegate();
+        }
+        if (!(info instanceof GerritChangeColumns.GerritChangeColumnIconLabelInfo)) {
+            return null;
+        }
+        ChangeInfo change = table.getRow(row);
+        String label = info.getTooltipText();
+        LabelInfo labelInfo = change.labels != null ? change.labels.get(label) : null;
+        AccountInfo voter = labelInfo == null ? null
+            : labelInfo.rejected != null ? labelInfo.rejected
+            : labelInfo.approved != null ? labelInfo.approved
+            : labelInfo.disliked != null ? labelInfo.disliked
+            : labelInfo.recommended;
+        return voter != null ? Pair.create(change, Pair.create(label, voter)) : null;
+    }
+
+    /**
+     * A vote with what its voter wrote with it, as a CI server writes its build's result and link.
+     */
+    @Nullable
+    private String voteToolTip(MouseEvent event) {
+        Pair<ChangeInfo, Pair<String, AccountInfo>> vote = voteAt(event);
+        if (vote == null) {
+            return null;
+        }
+        ChangeInfo change = vote.getFirst();
+        String label = vote.getSecond().getFirst();
+        AccountInfo voter = vote.getSecond().getSecond();
+        StringBuilder html = new StringBuilder("<html>").append(GerritBundle.message("list.vote.by",
+            StringUtil.escapeXmlEntities(label) + voteValue(change.labels.get(label), voter),
+            StringUtil.escapeXmlEntities(GerritChangeDetailsPanel.accountDisplayName(voter))));
+        VoteMessages.Result result = voteMessages.get(change, voter);
+        if (result == null) {
+            if (!voteMessages.isLoaded(change)) {
+                html.append("<br><i>").append(GerritBundle.message("list.vote.loading")).append("</i>");
+            }
+        } else {
+            html.append("<br>").append(StringUtil.escapeXmlEntities(StringUtil.shortenTextWithEllipsis(result.text, 400, 0))
+                .replace("\n", "<br>"));
+            if (result.url != null) {
+                html.append("<br><i>")
+                    .append(GerritBundle.message("list.vote.open", StringUtil.escapeXmlEntities(result.url)))
+                    .append("</i>");
+            }
+        }
+        return html.append("</html>").toString();
+    }
+
+    private static String voteValue(LabelInfo labelInfo, AccountInfo voter) {
+        if (labelInfo.all != null) {
+            for (ApprovalInfo approval : labelInfo.all) {
+                if (approval.value != null && approval.value != 0
+                    && Objects.equals(approval._accountId, voter._accountId)) {
+                    return " " + (approval.value > 0 ? "+" : "") + approval.value;
+                }
+            }
+        }
+        return "";
+    }
+
+    private void openVoteLink(MouseEvent event) {
+        Pair<ChangeInfo, Pair<String, AccountInfo>> vote = voteAt(event);
+        if (vote != null) {
+            voteMessages.whenLoaded(vote.getFirst(), vote.getSecond().getSecond(), result -> {
+                if (result.url != null) {
+                    BrowserUtil.browse(result.url);
+                }
+            });
+        }
     }
 
     private boolean isGroupRow(int row) {

@@ -2,7 +2,7 @@
  * Copyright 2000-2011 JetBrains s.r.o.
  * Copyright 2013-2018 Urs Wolfer
  * Modified 2026 by Maximilian Kroboth: the change list asks for the commits it groups stacks by; the comments and
- * drafts of every patch set and file diffs are read.
+ * drafts of every patch set, file diffs and change messages are read.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,6 +39,7 @@ import com.google.gerrit.extensions.client.ListChangesOption;
 import com.google.gerrit.extensions.common.AccountInfo;
 import com.google.gerrit.extensions.common.ChangeInfo;
 import com.google.gerrit.extensions.common.ChangeInput;
+import com.google.gerrit.extensions.common.ChangeMessageInfo;
 import com.google.gerrit.extensions.common.MergePatchSetInput;
 import com.google.gerrit.extensions.common.CommentInfo;
 import com.google.gerrit.extensions.common.DiffInfo;
@@ -683,6 +684,27 @@ public final class GerritUtil {
         }, (Map<String, List<CommentInfo>> comments) -> {
             if (comments != null) {
                 consumer.consume(comments);
+            }
+        }, project);
+    }
+
+    /**
+     * The messages of a change, the reviews with their votes and those of CI among them, for what a vote's tooltip
+     * adds: a failure leaves the consumer uncalled, and is only logged.
+     */
+    public void getChangeMessagesQuietly(final int changeNr,
+                                         final Project project,
+                                         final Consumer<List<ChangeMessageInfo>> consumer) {
+        accessGerrit(() -> {
+            try {
+                return gerritApi(project).changes().id(changeNr).messages();
+            } catch (RestApiException e) {
+                LOG.info("Messages of change " + changeNr + " not loaded", e);
+                return null;
+            }
+        }, (List<ChangeMessageInfo> messages) -> {
+            if (messages != null) {
+                consumer.consume(messages);
             }
         }, project);
     }

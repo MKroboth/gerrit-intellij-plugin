@@ -54,6 +54,11 @@ final class GroupedColumn<A> extends ColumnInfo<ChangeInfo, A> {
         this.positionOf = positionOf;
     }
 
+    @NotNull
+    ColumnInfo<ChangeInfo, A> getDelegate() {
+        return delegate;
+    }
+
     @Nullable
     @Override
     public A valueOf(ChangeInfo item) {
