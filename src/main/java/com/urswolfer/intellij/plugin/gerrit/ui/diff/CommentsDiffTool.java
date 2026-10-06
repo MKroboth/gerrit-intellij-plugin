@@ -347,7 +347,8 @@ public class CommentsDiffTool implements FrameDiffTool, SuppressiveDiffTool {
         @NotNull
         @Override
         public JComponent getComponent() {
-            return component;
+            // since 2026.1 the super constructor asks for it, before this viewer's own panel exists
+            return component != null ? component : super.getComponent();
         }
 
         @Override
@@ -369,7 +370,8 @@ public class CommentsDiffTool implements FrameDiffTool, SuppressiveDiffTool {
         @NotNull
         @Override
         public JComponent getComponent() {
-            return component;
+            // since 2026.1 the super constructor asks for it, before this viewer's own panel exists
+            return component != null ? component : super.getComponent();
         }
 
         @Override
