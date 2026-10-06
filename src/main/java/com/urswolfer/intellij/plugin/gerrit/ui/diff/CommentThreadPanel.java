@@ -134,6 +134,23 @@ final class CommentThreadPanel extends CommentCard {
         rebuild();
     }
 
+    /**
+     * The reply editor, opened and focused; on a thread which ends in the user's draft, that draft's editor, as a
+     * second reply on top of it is not possible.
+     */
+    void startReply() {
+        if (replyEditor != null) {
+            focus(replyEditor);
+        } else if (draftEditor != null) {
+            focus(draftEditor);
+        } else if (canReply()) {
+            expanded = true;
+            openReplyEditor("");
+        } else if (controller.canComment() && CommentThread.isDraft(thread.getLast())) {
+            openDraftEditor(thread.getLast());
+        }
+    }
+
     void expand() {
         if (!expanded) {
             expanded = true;

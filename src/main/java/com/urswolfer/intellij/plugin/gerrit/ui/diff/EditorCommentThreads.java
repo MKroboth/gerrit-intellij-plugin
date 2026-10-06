@@ -24,6 +24,7 @@ import com.google.gerrit.extensions.common.CommentInfo;
 import com.intellij.codeInsight.highlighting.HighlightManager;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.editor.Inlay;
+import com.intellij.openapi.editor.LogicalPosition;
 import com.intellij.openapi.editor.colors.EditorColors;
 import com.intellij.openapi.editor.colors.TextAttributesKey;
 import com.intellij.openapi.editor.ex.EditorEx;
@@ -72,6 +73,8 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
     private final Map<String, ShownThread> shownThreads = new HashMap<>();
     /** The shown threads from the top of the file to the bottom. */
     private final List<ShownThread> order = new ArrayList<>();
+    @Nullable
+    private ShownThread lastRevealed;
     private final Map<Integer, NewThread> newThreads = new HashMap<>();
     private Runnable draftsChanged = () -> {};
 
@@ -89,6 +92,7 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
         this.side = side;
         this.inlays = new EditorCommentInlays(editor);
         AddCommentGutterIcon.install(editor, this::canComment, line -> startThread(line, null));
+        ThreadKeys.install(editor, this);
     }
 
     void onDraftsChanged(@NotNull Runnable draftsChanged) {
@@ -280,6 +284,43 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
         }
     }
 
+    /**
+     * The next thread below the caret, or above it; after one was revealed, the one after it. The caret moves to the
+     * revealed thread's line, so that the next step goes on from there.
+     */
+    void revealFromCaret(int direction) {
+        int caretLine = editor.getCaretModel().getLogicalPosition().line + 1;
+        int target = -1;
+        if (lastRevealed != null && order.contains(lastRevealed) && lastRevealed.line == caretLine) {
+            target = order.indexOf(lastRevealed) + direction;
+        } else if (direction > 0) {
+            for (int i = 0; i < order.size() && target < 0; i++) {
+                if (order.get(i).line >= caretLine) target = i;
+            }
+        } else {
+            for (int i = order.size() - 1; i >= 0 && target < 0; i--) {
+                if (order.get(i).line < caretLine) target = i;
+            }
+        }
+        if (target >= 0 && target < order.size()) {
+            show(order.get(target));
+        }
+    }
+
+    /**
+     * Opens the reply of the thread on the caret's line, or of the next one below it.
+     */
+    void replyAtCaret() {
+        int caretLine = editor.getCaretModel().getLogicalPosition().line + 1;
+        for (ShownThread shown : order) {
+            if (shown.line >= caretLine) {
+                show(shown);
+                shown.panel.startReply();
+                return;
+            }
+        }
+    }
+
     @Override
     public void reveal(@NotNull CommentThreadPanel from, int direction) {
         int index = -1;
@@ -288,8 +329,13 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
         }
         int target = index + direction;
         if (index < 0 || target < 0 || target >= order.size()) return;
-        ShownThread shown = order.get(target);
+        show(order.get(target));
+    }
+
+    private void show(ShownThread shown) {
+        lastRevealed = shown;
         shown.panel.expand();
+        editor.getCaretModel().moveToLogicalPosition(new LogicalPosition(Math.max(shown.line - 1, 0), 0));
         Rectangle bounds = shown.inlay.getBounds();
         if (bounds != null) {
             // the line the thread is on stays in view above it

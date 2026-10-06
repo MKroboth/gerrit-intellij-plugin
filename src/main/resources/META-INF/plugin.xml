@@ -1,5 +1,6 @@
 <!--
  * Copyright 2013-2016 Urs Wolfer
+ * Modified 2026 by Maximilian Kroboth: actions to walk and answer the comment threads of a diff.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -583,6 +584,15 @@
     <action id="Gerrit.AddComment" text="Add Comment"
             description="Add a Gerrit comment at the caret position in the diff of a change"
             class="com.urswolfer.intellij.plugin.gerrit.ui.diff.AddCommentInDiffAction"/>
+    <action id="Gerrit.NextThread" text="Next Comment Thread"
+            description="Go to the next Gerrit comment thread in the diff of a change"
+            class="com.urswolfer.intellij.plugin.gerrit.ui.diff.ThreadKeys$NextThread"/>
+    <action id="Gerrit.PreviousThread" text="Previous Comment Thread"
+            description="Go to the previous Gerrit comment thread in the diff of a change"
+            class="com.urswolfer.intellij.plugin.gerrit.ui.diff.ThreadKeys$PreviousThread"/>
+    <action id="Gerrit.ReplyToThread" text="Reply to Comment Thread"
+            description="Reply to the Gerrit comment thread at the caret in the diff of a change"
+            class="com.urswolfer.intellij.plugin.gerrit.ui.diff.ThreadKeys$ReplyToThread"/>
 
     <action id="Gerrit.CompareBranch" text="Compare with Branch"
             class="com.urswolfer.intellij.plugin.gerrit.ui.action.CompareBranchAction">
