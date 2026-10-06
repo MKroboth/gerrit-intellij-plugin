@@ -107,6 +107,16 @@ public class DraftsTest {
         Assert.assertFalse(Drafts.isInitiallyResolved(comment(true), comment(false)));
     }
 
+    @Test
+    public void testQuoteMarksEveryLineAndLeavesRoomForTheAnswer() {
+        Assert.assertEquals("> first\n> \n> second\n\n", Drafts.quote("first\n\nsecond"));
+    }
+
+    @Test
+    public void testQuoteOfNothingIsEmpty() {
+        Assert.assertEquals("", Drafts.quote(null));
+    }
+
     private static CommentInfo comment(boolean unresolved) {
         CommentInfo comment = new CommentInfo();
         comment.unresolved = unresolved;

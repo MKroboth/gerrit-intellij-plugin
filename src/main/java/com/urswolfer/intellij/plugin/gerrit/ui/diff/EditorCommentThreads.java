@@ -102,6 +102,31 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
             comments.put(comment.id, comment);
         }
         refresh();
+        reopenUnsentThreads();
+    }
+
+    /**
+     * New comments started before the diff was closed open again where they were, without taking the focus.
+     */
+    private void reopenUnsentThreads() {
+        String prefix = unsentKey("new", newThreadId(""));
+        for (String line : UnsentComments.getInstance().suffixesOf(prefix)) {
+            try {
+                startThread(Integer.parseInt(line), null, false);
+            } catch (NumberFormatException ignored) {
+                // not a key of this kind
+            }
+        }
+    }
+
+    private String newThreadId(String line) {
+        return revisionId + ':' + side + ':' + filePath + ':' + line;
+    }
+
+    @NotNull
+    @Override
+    public String unsentKey(@NotNull String kind, @NotNull String id) {
+        return kind + ':' + changeInfo.id + ':' + id;
     }
 
     /**
@@ -122,13 +147,20 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
      * @param line 1-based
      */
     void startThread(int line, @Nullable Comment.Range range) {
+        startThread(line, range, true);
+    }
+
+    private void startThread(int line, @Nullable Comment.Range range, boolean focus) {
         NewThread open = newThreads.get(line);
         if (open != null) {
-            open.editor.getPreferredFocusedComponent().requestFocusInWindow();
+            if (focus) {
+                open.editor.getPreferredFocusedComponent().requestFocusInWindow();
+            }
             return;
         }
         NewThread newThread = new NewThread();
-        newThread.editor = new CommentEditorPanel(project, "", false, new CommentEditorPanel.Listener() {
+        String unsentKey = unsentKey("new", newThreadId(Integer.toString(line)));
+        newThread.editor = new CommentEditorPanel(project, "", false, unsentKey, new CommentEditorPanel.Listener() {
             @Override
             public void save(@NotNull String text, boolean resolved) {
                 DraftInput draft = Drafts.newComment(filePath, side, line, range, text, resolved);
@@ -145,7 +177,9 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
         newThread.inlay = inlays.insert(toLineIndex(line), card);
         if (newThread.inlay == null) return;
         newThreads.put(line, newThread);
-        newThread.editor.getPreferredFocusedComponent().requestFocusInWindow();
+        if (focus) {
+            newThread.editor.getPreferredFocusedComponent().requestFocusInWindow();
+        }
     }
 
     private void closeNewThread(int line) {

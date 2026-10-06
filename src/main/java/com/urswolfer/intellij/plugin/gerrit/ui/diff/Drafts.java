@@ -70,6 +70,21 @@ final class Drafts {
     }
 
     /**
+     * The start of a reply which quotes a comment, as Gerrit's "Quote" does.
+     */
+    @NotNull
+    static String quote(@Nullable String message) {
+        if (message == null || message.isEmpty()) {
+            return "";
+        }
+        StringBuilder quoted = new StringBuilder();
+        for (String line : message.split("\n", -1)) {
+            quoted.append("> ").append(line).append('\n');
+        }
+        return quoted.append('\n').toString();
+    }
+
+    /**
      * A reply starts out in the state of the comment replied to: unchecked, it reopened every resolved thread
      * somebody answered.
      */

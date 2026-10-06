@@ -72,6 +72,12 @@ final class CommentThreadPanel extends CommentCard {
          */
         @Nullable
         String originOf(@NotNull CommentThread thread);
+
+        /**
+         * Where the unsaved text of an editor is kept, see {@link UnsentComments}.
+         */
+        @NotNull
+        String unsentKey(@NotNull String kind, @NotNull String id);
     }
 
     private final Project project;
@@ -85,7 +91,7 @@ final class CommentThreadPanel extends CommentCard {
     private String editedDraftId;
     @Nullable
     private CommentEditorPanel draftEditor;
-    private boolean sendingDone;
+    private boolean sendingQuickReply;
     private boolean hasPrevious;
     private boolean hasNext;
 
@@ -93,6 +99,24 @@ final class CommentThreadPanel extends CommentCard {
         this.project = project;
         this.controller = controller;
         setThread(thread);
+        reopenUnsentEditor();
+    }
+
+    /**
+     * An answer started before the diff was closed opens again, without taking the focus.
+     */
+    private void reopenUnsentEditor() {
+        UnsentComments unsent = UnsentComments.getInstance();
+        if (canReply() && unsent.get(controller.unsentKey("reply", thread.getRoot().id)) != null) {
+            openReplyEditor("", false);
+            return;
+        }
+        for (CommentInfo comment : thread.getComments()) {
+            if (CommentThread.isDraft(comment) && unsent.get(controller.unsentKey("edit", comment.id)) != null) {
+                openDraftEditor(comment, false);
+                return;
+            }
+        }
     }
 
     void setThread(@NotNull CommentThread thread) {
@@ -163,7 +187,7 @@ final class CommentThreadPanel extends CommentCard {
         if (canReply()) {
             reply = new LinkLabel<>("Reply", null, (source, data) -> {
                 expanded = true;
-                openReplyEditor();
+                openReplyEditor("");
             });
         }
         return row(link, reply);
@@ -263,15 +287,13 @@ final class CommentThreadPanel extends CommentCard {
         JComponent right = null;
         if (canReply()) {
             List<JButton> answers = new ArrayList<>();
+            JButton quote = new JButton("Quote");
+            quote.setToolTipText("Reply quoting the last comment");
+            quote.addActionListener(e -> openReplyEditor(Drafts.quote(thread.getLast().message)));
+            answers.add(quote);
             if (!thread.isResolved()) {
-                JButton done = new JButton("Done");
-                done.setToolTipText("Reply \"Done\" and resolve the thread");
-                done.addActionListener(e -> {
-                    if (sendingDone) return;
-                    sendingDone = true;
-                    controller.reply(thread, "Done", true, () -> sendingDone = false, () -> sendingDone = false);
-                });
-                answers.add(done);
+                answers.add(quickReply("Ack", "Reply \"Ack\" and resolve the thread"));
+                answers.add(quickReply("Done", "Reply \"Done\" and resolve the thread"));
             }
             // painted as the default button of a dialog, which 2020.3 only does for the root pane's default button
             JButton reply = new JButton("Reply") {
@@ -280,11 +302,25 @@ final class CommentThreadPanel extends CommentCard {
                     return true;
                 }
             };
-            reply.addActionListener(e -> openReplyEditor());
+            reply.addActionListener(e -> openReplyEditor(""));
             answers.add(reply);
             right = buttons(answers.toArray(new JButton[0]));
         }
         return row(left, right);
+    }
+
+    /**
+     * A one-word answer which resolves the thread, sent at once.
+     */
+    private JButton quickReply(String message, String tooltip) {
+        JButton button = new JButton(message);
+        button.setToolTipText(tooltip);
+        button.addActionListener(e -> {
+            if (sendingQuickReply) return;
+            sendingQuickReply = true;
+            controller.reply(thread, message, true, () -> sendingQuickReply = false, () -> sendingQuickReply = false);
+        });
+        return button;
     }
 
     private boolean canReply() {
@@ -302,8 +338,13 @@ final class CommentThreadPanel extends CommentCard {
         return panel;
     }
 
-    private void openReplyEditor() {
-        replyEditor = new CommentEditorPanel(project, "", Drafts.isInitiallyResolved(null, thread.getLast()),
+    private void openReplyEditor(@NotNull String text) {
+        openReplyEditor(text, true);
+    }
+
+    private void openReplyEditor(@NotNull String text, boolean focus) {
+        replyEditor = new CommentEditorPanel(project, text, Drafts.isInitiallyResolved(null, thread.getLast()),
+            controller.unsentKey("reply", thread.getRoot().id),
             new CommentEditorPanel.Listener() {
                 @Override
                 public void save(@NotNull String text, boolean resolved) {
@@ -321,13 +362,20 @@ final class CommentThreadPanel extends CommentCard {
                 }
             });
         rebuild();
-        focus(replyEditor);
+        if (focus) {
+            focus(replyEditor);
+        }
     }
 
     private void openDraftEditor(CommentInfo draft) {
+        openDraftEditor(draft, true);
+    }
+
+    private void openDraftEditor(CommentInfo draft, boolean focus) {
         editedDraftId = draft.id;
         draftEditor = new CommentEditorPanel(project, StringUtil.notNullize(draft.message),
-            Drafts.isInitiallyResolved(draft, null), new CommentEditorPanel.Listener() {
+            Drafts.isInitiallyResolved(draft, null), controller.unsentKey("edit", draft.id),
+            new CommentEditorPanel.Listener() {
                 @Override
                 public void save(@NotNull String text, boolean resolved) {
                     CommentEditorPanel editor = Objects.requireNonNull(draftEditor);
@@ -344,7 +392,9 @@ final class CommentThreadPanel extends CommentCard {
                 }
             });
         rebuild();
-        focus(draftEditor);
+        if (focus) {
+            focus(draftEditor);
+        }
     }
 
     private void closeDraftEditor() {

@@ -17,6 +17,8 @@
 package com.urswolfer.intellij.plugin.gerrit.ui.diff;
 
 import com.intellij.openapi.actionSystem.CommonShortcuts;
+import com.intellij.openapi.editor.event.DocumentEvent;
+import com.intellij.openapi.editor.event.DocumentListener;
 import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.fileTypes.FileTypes;
 import com.intellij.openapi.keymap.KeymapUtil;
@@ -55,11 +57,21 @@ final class CommentEditorPanel extends JPanel {
     private final JCheckBox resolvedCheckBox = new JCheckBox("Resolved");
     private final JButton saveButton = new JButton("Save");
     private final Listener listener;
+    private final String unsentKey;
 
-    CommentEditorPanel(@NotNull Project project, @NotNull String text, boolean resolved, @NotNull Listener listener) {
+    /**
+     * @param unsentKey where the text is kept while it is not saved, and taken from when the editor opens again
+     */
+    CommentEditorPanel(@NotNull Project project, @NotNull String text, boolean resolved, @NotNull String unsentKey,
+                       @NotNull Listener listener) {
         super(new BorderLayout(0, JBUI.scale(4)));
         this.listener = listener;
+        this.unsentKey = unsentKey;
         setOpaque(false);
+        String unsent = UnsentComments.getInstance().get(unsentKey);
+        if (unsent != null) {
+            text = unsent;
+        }
 
         textField = new EditorTextField(text, project, FileTypes.PLAIN_TEXT) {
             @Override
@@ -79,6 +91,12 @@ final class CommentEditorPanel extends JPanel {
             }
         };
         textField.setOneLineMode(false);
+        textField.addDocumentListener(new DocumentListener() {
+            @Override
+            public void documentChanged(@NotNull DocumentEvent event) {
+                UnsentComments.getInstance().put(unsentKey, textField.getText());
+            }
+        });
         textField.setBorder(BorderFactory.createCompoundBorder(
             JBUI.Borders.customLine(JBColor.border(), 1), JBUI.Borders.empty(2, 4)));
         add(textField, BorderLayout.CENTER);
@@ -87,7 +105,7 @@ final class CommentEditorPanel extends JPanel {
         resolvedCheckBox.setOpaque(false);
         saveButton.addActionListener(e -> save());
         JButton cancelButton = new JButton("Cancel");
-        cancelButton.addActionListener(e -> listener.cancel());
+        cancelButton.addActionListener(e -> cancel());
 
         JPanel buttons = new JPanel();
         buttons.setOpaque(false);
@@ -105,21 +123,28 @@ final class CommentEditorPanel extends JPanel {
         add(buttons, BorderLayout.SOUTH);
 
         DumbAwareAction.create(e -> save()).registerCustomShortcutSet(CommonShortcuts.CTRL_ENTER, textField);
-        DumbAwareAction.create(e -> listener.cancel()).registerCustomShortcutSet(CommonShortcuts.ESCAPE, textField);
+        DumbAwareAction.create(e -> cancel()).registerCustomShortcutSet(CommonShortcuts.ESCAPE, textField);
     }
 
     private void save() {
         String text = textField.getText().trim();
         if (text.isEmpty() || !saveButton.isEnabled()) return;
         saveButton.setEnabled(false);
+        UnsentComments.getInstance().remove(unsentKey);
         listener.save(text, resolvedCheckBox.isSelected());
     }
 
+    private void cancel() {
+        UnsentComments.getInstance().remove(unsentKey);
+        listener.cancel();
+    }
+
     /**
-     * After a failed save, so that it can be tried again.
+     * After a failed save, so that it can be tried again, and is kept until it is.
      */
     void saveFailed() {
         saveButton.setEnabled(true);
+        UnsentComments.getInstance().put(unsentKey, textField.getText());
     }
 
     @NotNull
