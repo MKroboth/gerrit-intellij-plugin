@@ -1,6 +1,7 @@
 /*
  * Copyright 2026 Urs Wolfer
- * Modified 2026 by Maximilian Kroboth: renders comments as Markdown, and Previous and Next under each thread.
+ * Modified 2026 by Maximilian Kroboth: renders comments as Markdown, with Previous and Next under each thread, and
+ * names the patch set of a thread carried forward.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -95,6 +96,10 @@ final class CommentThreadPanel extends JPanel implements DataProvider {
         boolean isFolded(Comment comment);
 
         void setFolded(Comment comment, boolean folded);
+
+        /** For a thread of an earlier patch set: which one, and whether its line changed since. */
+        @Nullable
+        String origin();
 
         /** Whether the caret can be taken to the thread above or below, as in a diff. */
         boolean canWalk();
@@ -354,6 +359,12 @@ final class CommentThreadPanel extends JPanel implements DataProvider {
         state.setForeground(UIUtil.getContextHelpForeground());
         List<JComponent> row = new ArrayList<>(); // the state, then the links, which a click on one disables
         row.add(state);
+        String origin = actions.origin();
+        if (origin != null) {
+            JBLabel originLabel = new JBLabel(origin);
+            originLabel.setForeground(UIUtil.getContextHelpForeground());
+            row.add(originLabel);
+        }
         if (thread.hasDraft() || !actions.canComment()) {
             row.addAll(walkLinks());
             return links(0, row.toArray(new JComponent[0]));

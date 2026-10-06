@@ -1,7 +1,7 @@
 /*
  * Copyright 2026 Urs Wolfer
- * Modified 2026 by Maximilian Kroboth: a "+" in the gutter starts a comment, and Previous and Next under each thread
- * walk the comments.
+ * Modified 2026 by Maximilian Kroboth: a "+" in the gutter starts a comment, Previous and Next under each thread walk
+ * the comments, and the threads of earlier patch sets show on the newer side.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -92,6 +92,8 @@ final class DiffComments {
     // laid out as the settings and the account say now; one whose text did not fit its comments then is not
     private final Set<EditorEx> upToDate = new HashSet<>();
     private final Map<EditorEx, Disposable> gutterIcons = new HashMap<>();
+    // by revision, those whose comments show on the newer side as well
+    private final Map<String, EarlierPatchSet> earlierPatchSets = new HashMap<>();
     private int localChanges;
     // in the order the icons are added in, each to the left of those on its line already
     private final List<ShownComment> comments = new ArrayList<>();
@@ -237,7 +239,8 @@ final class DiffComments {
     private static boolean isRangeLaidOut(Document document, LineMapping mapping, ShownComment shownComment,
                                           RangeHighlighter highlighter) {
         Comment.Range range = shownComment.comment.range;
-        Comment.Range expected = range != null ? mapping.editorRangeOf(shownComment.side, range) : null;
+        Comment.Range expected = range != null && shownComment.earlier == null
+            ? mapping.editorRangeOf(shownComment.side, range) : null;
         RangeHighlighter actual =
             ((CommentGutterIconRenderer) highlighter.getGutterIconRenderer()).getRangeHighlighter();
         if (expected == null || actual == null) return expected == null && actual == null;
@@ -260,7 +263,7 @@ final class DiffComments {
     }
 
     private static int editorLine(EditorEx editor, LineMapping mapping, ShownComment shownComment) {
-        return Math.min(mapping.editorLineOf(shownComment.side, shownComment.comment.line),
+        return Math.min(mapping.editorLineOf(shownComment.side, shownComment.line),
             editor.getDocument().getLineCount() - 1);
     }
 
@@ -274,7 +277,7 @@ final class DiffComments {
 
     /** The comments of a side as loaded again, in place of those there were. */
     void replaceAll(Iterable<? extends Comment> sideComments, CommentSide side) {
-        comments.clear();
+        comments.removeIf(entry -> entry.earlier == null);
         for (Comment comment : sideComments) {
             comments.add(entry(comment, side));
         }
@@ -283,7 +286,7 @@ final class DiffComments {
 
     /** The comments of both sides as loaded again, in place of those there were, as after a review published drafts. */
     void replaceAll(Iterable<? extends Comment> leftComments, Iterable<? extends Comment> rightComments) {
-        comments.clear();
+        comments.removeIf(entry -> entry.earlier == null);
         for (Comment comment : leftComments) {
             comments.add(entry(comment, left));
         }
@@ -301,6 +304,29 @@ final class DiffComments {
             }
         }
         render();
+    }
+
+    /**
+     * The comments of an earlier patch set of the file, which the newer side shows at the lines their lines became, in
+     * place of those of that patch set shown before. A reply, an edit or a removal goes to that patch set, where
+     * Gerrit keeps the thread.
+     */
+    void setEarlier(CommentSide side, int patchSet, PatchSetLineMapping lines,
+                    Iterable<? extends Comment> sideComments) {
+        earlierPatchSets.put(side.revisionId, new EarlierPatchSet(side, patchSet, lines));
+        comments.removeIf(entry -> entry.earlier != null && entry.earlier.side.isSameAs(side));
+        for (Comment comment : sideComments) {
+            comments.add(entry(comment, side));
+        }
+        render();
+    }
+
+    /** Takes off the comments of the earlier patch sets but these, as when the others have none left. */
+    void retainEarlier(Collection<Integer> patchSets) {
+        if (earlierPatchSets.values().removeIf(earlier -> !patchSets.contains(earlier.patchSet))) {
+            comments.removeIf(entry -> entry.earlier != null && !earlierPatchSets.containsValue(entry.earlier));
+            render();
+        }
     }
 
     private void remove(String commentId) {
@@ -338,8 +364,19 @@ final class DiffComments {
         Set<DiffComments> showing = live();
         showing.removeIf(comments -> comments.project != project
             || comments.changeInfo._number != changeInfo._number
-            || !comments.left.isSameAs(side) && !comments.right.isSameAs(side));
+            || !comments.shows(side));
         return showing;
+    }
+
+    private boolean shows(CommentSide side) {
+        if (left.isSameAs(side) || right.isSameAs(side)) return true;
+        EarlierPatchSet earlier = earlierPatchSets.get(side.revisionId);
+        return earlier != null && earlier.side.isSameAs(side);
+    }
+
+    /** Where the comment is kept, which its reply goes to. */
+    private CommentSide sideOf(ShownComment shownComment) {
+        return shownComment.earlier != null ? shownComment.earlier.side : getSide(shownComment.side);
     }
 
     /** Those of the diffs and editors open, of every project. */
@@ -463,7 +500,8 @@ final class DiffComments {
         if (line < 0) return null;
 
         RangeHighlighter rangeHighlighter = null;
-        if (comment.range != null) {
+        // the range of an earlier patch set is not where it was in this one
+        if (comment.range != null && shownComment.earlier == null) {
             Comment.Range editorRange = mapping.editorRangeOf(shownComment.side, comment.range);
             if (editorRange != null) {
                 rangeHighlighter = highlightRange(editor, editorRange);
@@ -474,7 +512,7 @@ final class DiffComments {
         highlighter.setThinErrorStripeMark(true);
         highlighter.setErrorStripeTooltip(CommentGutterIconRenderer.getErrorStripeTooltip(comment));
         highlighter.setGutterIconRenderer(new CommentGutterIconRenderer(
-            this, editor, addCommentActionBuilder, comment, getSide(shownComment.side), rangeHighlighter));
+            this, editor, addCommentActionBuilder, comment, sideOf(shownComment), rangeHighlighter));
         return highlighter;
     }
 
@@ -518,7 +556,7 @@ final class DiffComments {
             if (line < 0) continue; // the editor does not show the side
             CommentInlays inlays = CommentInlays.of(editor);
             CommentThreadPanel panel = new CommentThreadPanel(thread,
-                actions(editor, thread, getSide(thread.root.side)), inlays::width, inlays.avatarIcons());
+                actions(editor, thread, sideOf(thread.root)), inlays::width, inlays.avatarIcons());
             // in the order the threads were started, from the top, wherever several are on one line; the platform has
             // the one with the larger priority closer to the text
             Inlay<?> inlay = isOnFile(thread.root)
@@ -648,6 +686,17 @@ final class DiffComments {
                 }
             }
 
+            @Nullable
+            @Override
+            public String origin() {
+                EarlierPatchSet earlier = thread.root.earlier;
+                if (earlier == null) return null;
+                String patchSet = String.valueOf(earlier.patchSet);
+                return thread.root.exact
+                    ? GerritBundle.message("diff.thread.patchSet", patchSet)
+                    : GerritBundle.message("diff.thread.patchSet.moved", patchSet);
+            }
+
             @Override
             public boolean canWalk() {
                 return editor.getUserData(CommentNavigator.KEY) != null;
@@ -672,7 +721,24 @@ final class DiffComments {
 
     private ShownComment entry(Comment comment, CommentSide side) {
         comment.path = side.filePath;
-        return new ShownComment(comment, side.isSameAs(right) ? Side.RIGHT : Side.LEFT);
+        EarlierPatchSet earlier = earlierPatchSets.get(side.revisionId);
+        if (earlier != null && earlier.side.isSameAs(side) && !side.isSameAs(left) && !side.isSameAs(right)) {
+            return new ShownComment(comment, Side.RIGHT, earlier);
+        }
+        return new ShownComment(comment, side.isSameAs(right) ? Side.RIGHT : Side.LEFT, null);
+    }
+
+    private static final class EarlierPatchSet {
+        final CommentSide side;
+        final int patchSet;
+        // from the lines of that patch set to those of the newer side
+        final PatchSetLineMapping lines;
+
+        EarlierPatchSet(CommentSide side, int patchSet, PatchSetLineMapping lines) {
+            this.side = side;
+            this.patchSet = patchSet;
+            this.lines = lines;
+        }
     }
 
     private static final class ShownThread {
@@ -688,10 +754,25 @@ final class DiffComments {
     private static final class ShownComment {
         final Comment comment;
         final Side side;
+        @Nullable
+        final EarlierPatchSet earlier;
+        // on the side; for a comment of an earlier patch set the line its line became, whether still that line or not
+        @Nullable
+        final Integer line;
+        final boolean exact;
 
-        ShownComment(Comment comment, Side side) {
+        ShownComment(Comment comment, Side side, @Nullable EarlierPatchSet earlier) {
             this.comment = comment;
             this.side = side;
+            this.earlier = earlier;
+            if (earlier == null) {
+                line = comment.line;
+                exact = true;
+            } else {
+                PatchSetLineMapping.Mapped mapped = earlier.lines.map(comment.line != null ? comment.line : 0);
+                line = mapped.line;
+                exact = mapped.exact;
+            }
         }
     }
 }

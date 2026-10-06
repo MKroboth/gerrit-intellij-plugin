@@ -1,5 +1,6 @@
 /*
  * Copyright 2026 Urs Wolfer
+ * Modified 2026 by Maximilian Kroboth: loads the comments of earlier patch sets as well.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -62,12 +63,14 @@ import com.urswolfer.intellij.plugin.gerrit.util.PathUtils;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 /**
@@ -170,6 +173,7 @@ public class GerritCommentsDiffExtension extends DiffExtension {
         Runnable reload = () -> {
             if (Objects.equals(host, GerritProjectAccount.getInstance(project).getHost())) {
                 reloadComments(comments, project, changeInfo, selectedRevisionId, baseRevision.isPresent());
+                loadEarlierComments(comments, project, changeInfo, selectedRevisionId, baseRevision, true);
             }
         };
         MessageBusConnection connection = project.getMessageBus().connect(viewerBase);
@@ -199,6 +203,7 @@ public class GerritCommentsDiffExtension extends DiffExtension {
         }
 
         loadComments(comments, project, changeInfo, selectedRevisionId, baseRevision.isPresent());
+        loadEarlierComments(comments, project, changeInfo, selectedRevisionId, baseRevision, false);
         // as Gerrit's web UI does for a file opened; "Mark as Not Reviewed" takes it back until the diff is opened again
         ReviewedFilesService.getInstance(project).setReviewed(changeInfo, selectedRevisionId, List.of(relativeFilePath), true);
     }
@@ -264,6 +269,52 @@ public class GerritCommentsDiffExtension extends DiffExtension {
                     }
                 });
         }
+    }
+
+    /**
+     * Gerrit lists a comment with the patch set it was made on, and a review often moves on to a new patch set before
+     * the threads are answered. Those of the earlier patch sets which the diff does not show already appear on its
+     * newer side, at the line their line became in Gerrit's diff between the two.
+     *
+     * @param again whether they are shown already, which a comment saved or removed meanwhile keeps: the answer may
+     *              not have it yet
+     */
+    private static void loadEarlierComments(DiffComments comments, Project project, ChangeInfo changeInfo,
+                                            String selectedRevisionId,
+                                            Optional<Pair<String, RevisionInfo>> baseRevision, boolean again) {
+        RevisionInfo shown = changeInfo.revisions != null ? changeInfo.revisions.get(selectedRevisionId) : null;
+        if (shown == null || comments.isDisposed()) return;
+        CommentSide revisionSide = comments.getSide(Side.RIGHT);
+        Integer comparedWith = baseRevision.map(base -> base.getSecond()._number).orElse(null);
+        int localChanges = comments.localChanges();
+        GerritUtil gerritUtil = GerritUtil.getInstance();
+        gerritUtil.getAllCommentsQuietly(changeInfo._number, project, all -> {
+            if (comments.isDisposed() || again && comments.localChanges() != localChanges) return;
+            Map<Integer, List<CommentInfo>> byPatchSet = new TreeMap<>();
+            for (CommentInfo comment : all.getOrDefault(revisionSide.filePath, Collections.emptyList())) {
+                if (comment.patchSet != null && comment.patchSet < shown._number
+                    && !comment.patchSet.equals(comparedWith)
+                    && CommentSide.sideOf(comment.side) == com.google.gerrit.extensions.client.Side.REVISION) {
+                    byPatchSet.computeIfAbsent(comment.patchSet, patchSet -> new ArrayList<>()).add(comment);
+                }
+            }
+            comments.retainEarlier(byPatchSet.keySet());
+            byPatchSet.forEach((patchSet, patchSetComments) -> {
+                String revision = changeInfo.revisions.entrySet().stream()
+                    .filter(candidate -> patchSet.equals(candidate.getValue()._number))
+                    .map(Map.Entry::getKey)
+                    .findFirst().orElse(null);
+                if (revision == null) return;
+                gerritUtil.getFileDiff(changeInfo._number, selectedRevisionId, revisionSide.filePath, patchSet,
+                    project, diff -> {
+                        if (diff != null && diff.content != null && !comments.isDisposed()
+                            && (!again || comments.localChanges() == localChanges)) {
+                            comments.setEarlier(CommentSide.onRevision(revisionSide.filePath, revision), patchSet,
+                                PatchSetLineMapping.fromDiff(diff.content), patchSetComments);
+                        }
+                    });
+            });
+        });
     }
 
     private void addActions(DiffComments comments, EditorEx editor) {
