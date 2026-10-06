@@ -1,5 +1,6 @@
 <!--
  * Copyright 2013-2016 Urs Wolfer
+ * Modified 2026 by Maximilian Kroboth: the action which answers the comment thread at the caret.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -650,6 +651,8 @@
             class="com.urswolfer.intellij.plugin.gerrit.ui.diff.GoToCommentAction$Next"
             icon="AllIcons.General.ArrowDown"
             use-shortcut-of="NextOccurence"/>
+    <action id="Gerrit.ReplyToThread"
+            class="com.urswolfer.intellij.plugin.gerrit.ui.diff.ReplyToThreadAction"/>
 
     <action id="Gerrit.CompareBranch"
             class="com.urswolfer.intellij.plugin.gerrit.ui.action.CompareBranchAction">

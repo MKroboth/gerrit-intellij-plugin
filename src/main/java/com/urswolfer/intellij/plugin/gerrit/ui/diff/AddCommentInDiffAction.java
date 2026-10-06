@@ -1,5 +1,6 @@
 /*
  * Copyright 2026 Urs Wolfer
+ * Modified 2026 by Maximilian Kroboth: tells the reply to a thread whether a key was typed into a file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -59,7 +60,7 @@ public class AddCommentInDiffAction extends AnAction implements DumbAware, Updat
      * A bare letter which the keymap gave this action, as "C" was in the diff (issue #410), is typing in the editor
      * of a file: disabled, the key goes to the text.
      */
-    private static boolean isTypedInFileEditor(AnActionEvent e) {
+    static boolean isTypedInFileEditor(AnActionEvent e) {
         Editor editor = e.getData(CommonDataKeys.EDITOR);
         if (editor == null || editor.getEditorKind() != EditorKind.MAIN_EDITOR
             || !(e.getInputEvent() instanceof KeyEvent)) {

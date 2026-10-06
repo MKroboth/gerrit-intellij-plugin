@@ -1,7 +1,8 @@
 /*
  * Copyright 2026 Urs Wolfer
  * Modified 2026 by Maximilian Kroboth: a "+" in the gutter starts a comment, Quote, Previous and Next under each
- * thread, the threads of earlier patch sets show on the newer side, and saving or removing a draft is announced.
+ * thread, the threads of earlier patch sets show on the newer side, saving or removing a draft is announced, and a key
+ * answers the thread at the caret.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,6 +32,7 @@ import com.intellij.openapi.editor.EditorFactory;
 import com.intellij.openapi.editor.FoldRegion;
 import com.intellij.openapi.editor.Inlay;
 import com.intellij.openapi.editor.RangeMarker;
+import com.intellij.openapi.editor.ScrollType;
 import com.intellij.openapi.editor.ScrollingModel;
 import com.intellij.openapi.editor.colors.EditorColors;
 import com.intellij.openapi.editor.colors.TextAttributesKey;
@@ -115,6 +117,13 @@ final class DiffComments {
 
     boolean isDisposed() {
         return disposed.getAsBoolean();
+    }
+
+    /** Those which an editor shows, if any. */
+    @Nullable
+    static DiffComments of(Editor editor) {
+        DiffComments comments = editor.getUserData(KEY);
+        return comments != null && !comments.isDisposed() ? comments : null;
     }
 
     /** Counts the comments saved and removed here, which comments loaded before do not have yet. */
@@ -572,7 +581,7 @@ final class DiffComments {
                 : inlays.insertAfter(line, panel, -index);
             index++;
             if (inlay != null) {
-                shown.add(new ShownThread(thread.root, inlay));
+                shown.add(new ShownThread(thread.root, inlay, panel));
             }
         }
         return shown;
@@ -618,6 +627,49 @@ final class DiffComments {
      */
     static boolean hides(int foldStart, int foldEnd, int offset) {
         return foldStart <= offset && offset <= foldEnd;
+    }
+
+    /**
+     * Answers the thread on the line of the caret, or else the next one below it, under the thread where it is shown
+     * there; edits the draft which a thread ends in instead, as a second reply on top of it is not possible.
+     *
+     * @return whether there was such a thread
+     */
+    boolean replyAtCaret(EditorEx editor) {
+        LineMapping mapping = getMapping(editor);
+        if (mapping == null || !mapping.fitsText()) return false;
+        List<CommentThreads.Thread<ShownComment>> all = new ArrayList<>();
+        for (Side side : Side.values()) {
+            all.addAll(threads(side));
+        }
+        all.sort(Comparator.comparing(thread -> thread.root.comment, CommentThreads.order()));
+        int caretLine = editor.getCaretModel().getLogicalPosition().line;
+        CommentThreads.Thread<ShownComment> target = null;
+        int targetLine = Integer.MAX_VALUE;
+        for (CommentThreads.Thread<ShownComment> thread : all) {
+            int line = threadLine(editor, mapping, thread.root);
+            if (line >= caretLine && line < targetLine) {
+                target = thread;
+                targetLine = line;
+            }
+        }
+        if (target == null) return false;
+        ScrollingModel scrolling = editor.getScrollingModel();
+        scrolling.disableAnimation();
+        editor.getCaretModel().moveToOffset(editor.getDocument().getLineStartOffset(targetLine));
+        scrolling.scrollToCaret(ScrollType.MAKE_VISIBLE);
+        scrolling.enableAnimation();
+        JComponent anchor = null;
+        for (ShownThread shown : threads.getOrDefault(editor, Collections.emptyList())) {
+            if (shown.root == target.root) {
+                anchor = shown.panel;
+            }
+        }
+        AddCommentActionBuilder.Builder builder = addCommentActionBuilder.create(this, editor).below(anchor);
+        CommentSide side = sideOf(target.root);
+        (target.hasDraft() ? builder.update(target.last(), side) : builder.reply(target.last(), side))
+            .get().addVersionedComment(project);
+        return true;
     }
 
     /** The thread of a comment shown here, by the comments shown now; null for one no longer shown. */
@@ -758,10 +810,12 @@ final class DiffComments {
     private static final class ShownThread {
         final ShownComment root;
         final Inlay<?> inlay;
+        final JComponent panel;
 
-        ShownThread(ShownComment root, Inlay<?> inlay) {
+        ShownThread(ShownComment root, Inlay<?> inlay, JComponent panel) {
             this.root = root;
             this.inlay = inlay;
+            this.panel = panel;
         }
     }
 

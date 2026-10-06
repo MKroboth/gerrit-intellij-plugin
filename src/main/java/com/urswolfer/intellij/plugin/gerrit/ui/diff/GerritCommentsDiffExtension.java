@@ -1,7 +1,7 @@
 /*
  * Copyright 2026 Urs Wolfer
- * Modified 2026 by Maximilian Kroboth: loads the comments of earlier patch sets as well, and puts a bar to publish the
- * drafts above the diff.
+ * Modified 2026 by Maximilian Kroboth: loads the comments of earlier patch sets as well, puts a bar to publish the
+ * drafts above the diff, and binds R to answer a thread.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -362,6 +362,8 @@ public class GerritCommentsDiffExtension extends DiffExtension {
         new GoToCommentAction.Previous().registerCustomShortcutSet(previous.getShortcutSet(),
             editor.getContentComponent());
         new GoToCommentAction.Next().registerCustomShortcutSet(next.getShortcutSet(), editor.getContentComponent());
+        new ReplyToThreadAction().registerCustomShortcutSet(ReplyToThreadAction.DIFF_SHORTCUT_SET,
+            editor.getContentComponent());
         group.add(previous);
         group.add(next);
         group.add(ActionManager.getInstance().getAction(ToggleReviewedAction.ID));
