@@ -1,7 +1,7 @@
 /*
  * Copyright 2026 Urs Wolfer
- * Modified 2026 by Maximilian Kroboth: a "+" in the gutter starts a comment, Previous and Next under each thread walk
- * the comments, the threads of earlier patch sets show on the newer side, and saving or removing a draft is announced.
+ * Modified 2026 by Maximilian Kroboth: a "+" in the gutter starts a comment, Quote, Previous and Next under each
+ * thread, the threads of earlier patch sets show on the newer side, and saving or removing a draft is announced.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -662,6 +662,12 @@ final class DiffComments {
             public AnAction reply(Comment comment, JComponent anchor) {
                 return addCommentActionBuilder.create(DiffComments.this, editor).reply(comment, side).below(anchor)
                     .get();
+            }
+
+            @Override
+            public AnAction quote(Comment comment, JComponent anchor) {
+                return addCommentActionBuilder.create(DiffComments.this, editor).reply(comment, side).quoting()
+                    .below(anchor).get();
             }
 
             @Override

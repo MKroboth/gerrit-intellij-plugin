@@ -1,7 +1,7 @@
 /*
  * Copyright 2026 Urs Wolfer
- * Modified 2026 by Maximilian Kroboth: renders comments as Markdown, with Previous and Next under each thread, and
- * names the patch set of a thread carried forward.
+ * Modified 2026 by Maximilian Kroboth: renders comments as Markdown, with Quote, Previous and Next under each thread,
+ * and names the patch set of a thread carried forward.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -86,6 +86,9 @@ final class CommentThreadPanel extends JPanel implements DataProvider {
 
         /** @param anchor what the form opens underneath */
         AnAction reply(Comment comment, JComponent anchor);
+
+        /** A reply which starts with the comment quoted. */
+        AnAction quote(Comment comment, JComponent anchor);
 
         AnAction resolve(Comment comment, CommentResolveAction.Reply reply);
 
@@ -373,6 +376,9 @@ final class CommentThreadPanel extends JPanel implements DataProvider {
         ActionLink reply = link(GerritBundle.message("diff.reply"));
         reply.addActionListener(e -> performOnce(actions.reply(last, reply), reply, links));
         links.add(reply);
+        ActionLink quote = link(GerritBundle.message("diff.quote"));
+        quote.addActionListener(e -> performOnce(actions.quote(last, quote), quote, links));
+        links.add(quote);
         if (CommentResolveAction.isOffered(thread)) { // the one rule, which the gutter icon goes by too
             for (CommentResolveAction.Reply kind : CommentResolveAction.Reply.values()) {
                 ActionLink resolve = link(kind.text());

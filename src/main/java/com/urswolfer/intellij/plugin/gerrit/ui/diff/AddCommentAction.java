@@ -1,5 +1,6 @@
 /*
  * Copyright 2013 Urs Wolfer
+ * Modified 2026 by Maximilian Kroboth: a reply can start with the comment it answers quoted.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,6 +58,7 @@ public class AddCommentAction extends AnAction implements DumbAware, UpdateInBac
     // where the form opens, rather than at the caret
     @Nullable
     private final JComponent anchor;
+    private final boolean quote;
 
     /**
      * @param side of the comment edited or replied to; null for a new comment, which goes on the side the caret or
@@ -70,7 +72,8 @@ public class AddCommentAction extends AnAction implements DumbAware, UpdateInBac
                      @Nullable CommentSide side,
                      Comment commentToEdit,
                      Comment replyToComment,
-                     @Nullable JComponent anchor) {
+                     @Nullable JComponent anchor,
+                     boolean quote) {
         super(label, null, icon);
 
         this.comments = comments;
@@ -80,6 +83,7 @@ public class AddCommentAction extends AnAction implements DumbAware, UpdateInBac
         this.commentToEdit = commentToEdit;
         this.replyToComment = replyToComment;
         this.anchor = anchor;
+        this.quote = quote;
     }
 
     @Override
@@ -128,7 +132,8 @@ public class AddCommentAction extends AnAction implements DumbAware, UpdateInBac
         }
 
         final CommentForm commentForm =
-            new CommentForm(project, editor, mapping, position, commentToEdit, replyToComment);
+            new CommentForm(project, editor, mapping, position, commentToEdit, replyToComment,
+                quote && replyToComment != null ? CommentForm.quote(replyToComment.message) : null);
         final JBPopup balloon = commentBalloonBuilder.getNewCommentBalloon(commentForm, GerritBundle.message("diff.comment"));
         balloon.addListener(new JBPopupListener() {
             @Override

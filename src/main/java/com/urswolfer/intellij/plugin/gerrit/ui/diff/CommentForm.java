@@ -1,5 +1,6 @@
 /*
  * Copyright 2013 Urs Wolfer
+ * Modified 2026 by Maximilian Kroboth: a reply can start with the comment it answers quoted.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -60,13 +61,15 @@ public class CommentForm extends JPanel {
 
     /**
      * @param position where a new comment goes, as the editor shows when the form opens
+     * @param text     what a new comment or a reply starts with, such as the comment it quotes
      */
     CommentForm(Project project,
                 Editor editor,
                 LineMapping mapping,
                 @Nullable CommentPosition position,
                 Comment commentToEdit,
-                Comment replyToComment) {
+                Comment replyToComment,
+                @Nullable String text) {
         super(new BorderLayout());
 
         this.editor = editor;
@@ -95,8 +98,23 @@ public class CommentForm extends JPanel {
 
         if (commentToEdit != null) {
             reviewTextField.setText(commentToEdit.message);
+        } else if (text != null) {
+            reviewTextField.setText(text);
+            reviewTextField.setCaretPosition(text.length());
         }
         resolvedCheckBox.setSelected(isInitiallyResolved(commentToEdit, replyToComment));
+    }
+
+    /** The start of a reply which quotes a comment, as the Quote of Gerrit's web UI writes it. */
+    static String quote(@Nullable String message) {
+        if (message == null || message.isEmpty()) {
+            return "";
+        }
+        StringBuilder quoted = new StringBuilder();
+        for (String line : message.split("\n", -1)) {
+            quoted.append("> ").append(line).append('\n');
+        }
+        return quoted.append('\n').toString();
     }
 
     /**

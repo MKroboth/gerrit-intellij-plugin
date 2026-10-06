@@ -1,5 +1,6 @@
 /*
  * Copyright 2026 Urs Wolfer
+ * Modified 2026 by Maximilian Kroboth: covers quoting a comment.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,6 +42,17 @@ public class CommentFormTest {
     public void testEditedDraftKeepsItsOwnState() {
         Assert.assertTrue(CommentForm.isInitiallyResolved(comment(false), comment(true)));
         Assert.assertFalse(CommentForm.isInitiallyResolved(comment(true), comment(false)));
+    }
+
+    @Test
+    public void testQuoteMarksEveryLineAndLeavesALineToWriteOn() {
+        Assert.assertEquals("> first\n> second\n\n", CommentForm.quote("first\nsecond"));
+    }
+
+    @Test
+    public void testQuoteOfNothingIsEmpty() {
+        Assert.assertEquals("", CommentForm.quote(null));
+        Assert.assertEquals("", CommentForm.quote(""));
     }
 
     private static CommentInfo comment(boolean unresolved) {

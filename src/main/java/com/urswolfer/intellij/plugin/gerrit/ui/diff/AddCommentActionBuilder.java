@@ -1,3 +1,4 @@
+// Modified 2026 by Maximilian Kroboth: a reply can start with the comment it answers quoted.
 package com.urswolfer.intellij.plugin.gerrit.ui.diff;
 
 import com.google.gerrit.extensions.client.Comment;
@@ -24,6 +25,7 @@ public class AddCommentActionBuilder {
         private Comment commentToEdit;
         private Comment replyToComment;
         private JComponent anchor;
+        private boolean quote;
 
         private Builder init(DiffComments comments, Editor editor) {
             this.comments = comments;
@@ -53,6 +55,12 @@ public class AddCommentActionBuilder {
             return this;
         }
 
+        /** The reply starts with the comment it answers quoted. */
+        Builder quoting() {
+            this.quote = true;
+            return this;
+        }
+
         /** The form opens underneath it, rather than at the caret. */
         Builder below(JComponent anchor) {
             this.anchor = anchor;
@@ -61,7 +69,7 @@ public class AddCommentActionBuilder {
 
         public AddCommentAction get() {
             return new AddCommentAction(text, icon, comments, editor, commentBalloonBuilder, side, commentToEdit,
-                replyToComment, anchor);
+                replyToComment, anchor, quote);
         }
     }
 }

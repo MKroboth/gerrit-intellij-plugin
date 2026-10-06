@@ -1,6 +1,6 @@
 /*
  * Copyright 2013 Urs Wolfer
- * Modified 2026 by Maximilian Kroboth: renders the comment as Markdown.
+ * Modified 2026 by Maximilian Kroboth: renders the comment as Markdown, and offers to quote it in a reply.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -180,6 +180,12 @@ public class CommentGutterIconRenderer extends GutterIconRenderer {
                         .reply(thread != null ? thread.last() : fileComment, side)
                         .get();
                 actionGroup.add(commentAction);
+                actionGroup.add(addCommentActionBuilder
+                        .create(comments, editor)
+                        .withText(GerritBundle.message("diff.quote"))
+                        .reply(thread != null ? thread.last() : fileComment, side)
+                        .quoting()
+                        .get());
             }
 
             if (thread != null && CommentResolveAction.isOffered(thread)) {
