@@ -66,6 +66,12 @@ final class CommentThreadPanel extends CommentCard {
          * @param direction -1 for the thread above, 1 for the one below
          */
         void reveal(@NotNull CommentThreadPanel from, int direction);
+
+        /**
+         * For a thread of an earlier patch set: which one, and whether its line changed since.
+         */
+        @Nullable
+        String originOf(@NotNull CommentThread thread);
     }
 
     private final Project project;
@@ -149,8 +155,9 @@ final class CommentThreadPanel extends CommentCard {
         // Gerrit renders comments as Markdown; its emphasis would show as stray characters in one line
         String firstLine = lines.length > 0 ? lines[0].replace("**", "").replace("`", "") : "";
         int count = thread.getComments().size();
+        String origin = controller.originOf(thread);
         String text = "Resolved · " + authorName(root) + ": " + StringUtil.shortenTextWithEllipsis(firstLine, 80, 0)
-            + (count > 1 ? " (" + count + " comments)" : "");
+            + (count > 1 ? " (" + count + " comments)" : "") + (origin != null ? " · " + origin : "");
         LinkLabel<Object> link = new LinkLabel<>(text, AvatarIcon.of(root, JBUI.scale(16)), (source, data) -> expand());
         JComponent reply = null;
         if (canReply()) {
@@ -169,6 +176,19 @@ final class CommentThreadPanel extends CommentCard {
         state.setBackground(thread.isResolved()
             ? UIUtil.getPanelBackground().darker()
             : JBUI.CurrentTheme.Validator.warningBackgroundColor());
+        JComponent left = state;
+        String origin = controller.originOf(thread);
+        if (origin != null) {
+            JBLabel originLabel = new JBLabel(origin, UIUtil.ComponentStyle.SMALL);
+            originLabel.setForeground(UIUtil.getContextHelpForeground());
+            JPanel tags = new JPanel();
+            tags.setOpaque(false);
+            tags.setLayout(new BoxLayout(tags, BoxLayout.X_AXIS));
+            tags.add(state);
+            tags.add(Box.createHorizontalStrut(JBUI.scale(8)));
+            tags.add(originLabel);
+            left = tags;
+        }
         JComponent right = null;
         if (thread.isResolved() && !hasDraft()) {
             right = new LinkLabel<>("Collapse", null, (source, data) -> {
@@ -176,7 +196,7 @@ final class CommentThreadPanel extends CommentCard {
                 rebuild();
             });
         }
-        return row(state, right);
+        return row(left, right);
     }
 
     private JComponent createComment(CommentInfo comment) {

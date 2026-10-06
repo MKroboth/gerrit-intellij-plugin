@@ -1,6 +1,7 @@
 /*
  * Copyright 2013 Urs Wolfer
- * Modified 2026 by Maximilian Kroboth: shows comment threads in place in the diff unless the settings turn it off.
+ * Modified 2026 by Maximilian Kroboth: shows comment threads in place in the diff unless the settings turn it off,
+ * with those of earlier patch sets carried forward.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -71,6 +72,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.TreeMap;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -251,7 +253,52 @@ public class CommentsDiffTool implements FrameDiffTool, SuppressiveDiffTool {
                     comments.getOrDefault(relativeFilePath, Collections.emptyList()), REVISION_COMMENT)));
         }
 
+        showEarlierComments(threads2, project, changeInfo, selectedRevisionId, baseRevision, relativeFilePath);
+
         gerritUtil.setReviewed(changeInfo._number, selectedRevisionId, relativeFilePath, project);
+    }
+
+    /**
+     * Gerrit lists a comment with the patch set it was made on, and a review often moves on to a new patch set before
+     * the threads are answered. Those of earlier patch sets which this diff does not show already appear on the newer
+     * side, at the line their line became.
+     */
+    private void showEarlierComments(EditorCommentThreads threads,
+                                     Project project,
+                                     ChangeInfo changeInfo,
+                                     String revisionId,
+                                     Optional<Pair<String, RevisionInfo>> baseRevision,
+                                     String path) {
+        RevisionInfo shown = changeInfo.revisions != null ? changeInfo.revisions.get(revisionId) : null;
+        if (shown == null) {
+            return;
+        }
+        Integer comparedWith = baseRevision.map(base -> base.getSecond()._number).orElse(null);
+        gerritUtil.getChangeComments(changeInfo._number, project, all -> {
+            Map<Integer, List<CommentInfo>> byPatchSet = new TreeMap<>();
+            for (CommentInfo comment : all.getOrDefault(path, Collections.emptyList())) {
+                if (comment.patchSet == null || comment.patchSet >= shown._number
+                    || comment.patchSet.equals(comparedWith) || !REVISION_COMMENT.test(comment)) {
+                    continue;
+                }
+                byPatchSet.computeIfAbsent(comment.patchSet, key -> new ArrayList<>()).add(comment);
+            }
+            for (Map.Entry<Integer, List<CommentInfo>> entry : byPatchSet.entrySet()) {
+                String revision = changeInfo.revisions.entrySet().stream()
+                    .filter(candidate -> entry.getKey().equals(candidate.getValue()._number))
+                    .map(Map.Entry::getKey)
+                    .findFirst().orElse(null);
+                if (revision == null) {
+                    continue;
+                }
+                gerritUtil.getFileDiff(changeInfo._number, revisionId, path, entry.getKey(), project, diff -> {
+                    if (diff != null && diff.content != null) {
+                        threads.addEarlierComments(entry.getValue(), entry.getKey(), revision,
+                            LineMapping.fromDiff(diff.content));
+                    }
+                });
+            }
+        });
     }
 
     private EditorCommentThreads createThreads(Project project,

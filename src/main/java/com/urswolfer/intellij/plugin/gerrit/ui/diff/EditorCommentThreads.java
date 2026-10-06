@@ -38,6 +38,7 @@ import org.jetbrains.annotations.Nullable;
 import java.awt.Rectangle;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -66,6 +67,8 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
     private final EditorCommentInlays inlays;
 
     private final Map<String, CommentInfo> comments = new LinkedHashMap<>();
+    /** Comments of earlier patch sets shown here, by comment id; a reply saved into their thread joins them. */
+    private final Map<String, Origin> origins = new HashMap<>();
     private final Map<String, ShownThread> shownThreads = new HashMap<>();
     /** The shown threads from the top of the file to the bottom. */
     private final List<ShownThread> order = new ArrayList<>();
@@ -88,10 +91,24 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
     }
 
     void setComments(@NotNull Collection<CommentInfo> fileComments) {
-        comments.clear();
+        comments.keySet().removeIf(id -> !origins.containsKey(id));
         for (CommentInfo comment : fileComments) {
             comment.path = filePath;
             comments.put(comment.id, comment);
+        }
+        refresh();
+    }
+
+    /**
+     * Comments made on an earlier patch set of this file, shown where their lines are now.
+     */
+    void addEarlierComments(@NotNull Collection<CommentInfo> earlier, int patchSet, @NotNull String revision,
+                            @NotNull LineMapping mapping) {
+        for (CommentInfo comment : earlier) {
+            comment.path = filePath;
+            comments.put(comment.id, comment);
+            LineMapping.Mapped mapped = mapping.map(comment.line != null ? comment.line : 0);
+            origins.put(comment.id, new Origin(patchSet, revision, mapped.line, mapped.exact));
         }
         refresh();
     }
@@ -110,7 +127,7 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
             @Override
             public void save(@NotNull String text, boolean resolved) {
                 DraftInput draft = Drafts.newComment(filePath, side, line, range, text, resolved);
-                EditorCommentThreads.this.save(draft, () -> closeNewThread(line), newThread.editor::saveFailed);
+                EditorCommentThreads.this.save(draft, null, () -> closeNewThread(line), newThread.editor::saveFailed);
             }
 
             @Override
@@ -141,30 +158,55 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
     @Override
     public void reply(@NotNull CommentThread thread, @NotNull String text, boolean resolved,
                       @NotNull Runnable onSaved, @NotNull Runnable onFailed) {
-        save(Drafts.reply(thread.getLast(), text, resolved), onSaved, onFailed);
+        save(Drafts.reply(thread.getLast(), text, resolved), origins.get(thread.getRoot().id), onSaved, onFailed);
     }
 
     @Override
     public void edit(@NotNull CommentInfo draft, @NotNull String text, boolean resolved,
                      @NotNull Runnable onSaved, @NotNull Runnable onFailed) {
-        save(Drafts.edit(draft, text, resolved), onSaved, onFailed);
+        save(Drafts.edit(draft, text, resolved), origins.get(draft.id), onSaved, onFailed);
     }
 
     @Override
     public void delete(@NotNull CommentInfo draft) {
-        gerritUtil.deleteDraftComment(changeInfo._number, revisionId, draft.id, project, ignored -> {
-            comments.remove(draft.id);
-            refresh();
-        });
+        gerritUtil.deleteDraftComment(changeInfo._number, revisionOf(origins.get(draft.id)), draft.id, project,
+            ignored -> {
+                comments.remove(draft.id);
+                origins.remove(draft.id);
+                refresh();
+            });
     }
 
-    private void save(DraftInput draft, Runnable onSaved, Runnable onFailed) {
-        gerritUtil.saveDraftComment(changeInfo._number, revisionId, draft, project, saved -> {
+    /**
+     * Into the patch set of the thread it belongs to: Gerrit keeps a reply on the patch set of what it answers.
+     */
+    private void save(DraftInput draft, @Nullable Origin origin, Runnable onSaved, Runnable onFailed) {
+        gerritUtil.saveDraftComment(changeInfo._number, revisionOf(origin), draft, project, saved -> {
             saved.path = filePath;
             comments.put(saved.id, saved);
+            if (origin != null) {
+                origins.put(saved.id, origin);
+            }
             onSaved.run();
             refresh();
         }, onFailed);
+    }
+
+    private String revisionOf(@Nullable Origin origin) {
+        return origin != null ? origin.revision : revisionId;
+    }
+
+    @Nullable
+    @Override
+    public String originOf(@NotNull CommentThread thread) {
+        Origin origin = origins.get(thread.getRoot().id);
+        if (origin == null) return null;
+        return "Patch set " + origin.patchSet + (origin.exact ? "" : " · line changed");
+    }
+
+    private int lineOf(CommentThread thread) {
+        Origin origin = origins.get(thread.getRoot().id);
+        return origin != null ? origin.line : thread.getLine();
     }
 
     private void refresh() {
@@ -191,6 +233,7 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
                 it.remove();
             }
         }
+        order.sort(Comparator.comparingInt(shown -> shown.line));
         for (int i = 0; i < order.size(); i++) {
             order.get(i).panel.setNeighbours(i > 0, i < order.size() - 1);
         }
@@ -216,14 +259,17 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
     @Nullable
     private ShownThread show(CommentThread thread) {
         CommentThreadPanel panel = new CommentThreadPanel(project, this, thread);
-        Inlay<?> inlay = inlays.insert(toLineIndex(thread.getLine()), panel);
+        int line = lineOf(thread);
+        Inlay<?> inlay = inlays.insert(toLineIndex(line), panel);
         if (inlay == null) return null;
         ShownThread shown = new ShownThread();
         shown.panel = panel;
         shown.inlay = inlay;
+        shown.line = line;
         shown.signature = signature(thread);
         Comment.Range range = thread.getRoot().range;
-        if (range != null) {
+        // the range of an earlier patch set is not where it was in this one
+        if (range != null && !origins.containsKey(thread.getRoot().id)) {
             shown.rangeHighlighter = highlightRange(range);
         }
         shownThreads.put(thread.getRoot().id, shown);
@@ -268,9 +314,24 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
     private static final class ShownThread {
         CommentThreadPanel panel;
         Inlay<?> inlay;
+        int line;
         List<String> signature;
         @Nullable
         RangeHighlighter rangeHighlighter;
+    }
+
+    private static final class Origin {
+        final int patchSet;
+        final String revision;
+        final int line;
+        final boolean exact;
+
+        Origin(int patchSet, String revision, int line, boolean exact) {
+            this.patchSet = patchSet;
+            this.revision = revision;
+            this.line = line;
+            this.exact = exact;
+        }
     }
 
     private static final class NewThread {

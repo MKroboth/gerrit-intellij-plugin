@@ -2,7 +2,7 @@
  * Copyright 2000-2011 JetBrains s.r.o.
  * Copyright 2013-2018 Urs Wolfer
  * Modified 2026 by Maximilian Kroboth: saving and deleting a draft comment can report a failure to the caller;
- * the change list asks for the commits it groups stacks by.
+ * the change list asks for the commits it groups stacks by; comments of every patch set and file diffs are read.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,6 +35,7 @@ import com.google.gerrit.extensions.common.ChangeInfo;
 import com.google.gerrit.extensions.common.ChangeInput;
 import com.google.gerrit.extensions.common.MergePatchSetInput;
 import com.google.gerrit.extensions.common.CommentInfo;
+import com.google.gerrit.extensions.common.DiffInfo;
 import com.google.gerrit.extensions.common.FetchInfo;
 import com.google.gerrit.extensions.common.ProjectInfo;
 import com.google.gerrit.extensions.common.RevisionInfo;
@@ -613,6 +614,57 @@ public final class GerritUtil {
                     notifyError(e, "Failed to get Gerrit change.", project);
                     return null;
                 }
+            }
+        };
+        accessGerrit(supplier, consumer, project);
+    }
+
+    /**
+     * The comments and the drafts on every patch set of a change, each with its patch set. A draft keeps no author,
+     * as the drafts of a revision do.
+     */
+    public void getChangeComments(final int changeNr,
+                                  final Project project,
+                                  final Consumer<Map<String, List<CommentInfo>>> consumer) {
+        Supplier<Map<String, List<CommentInfo>>> supplier = () -> {
+            try {
+                Map<String, List<CommentInfo>> all = new HashMap<>();
+                for (Map.Entry<String, List<CommentInfo>> entry : gerritApi().changes().id(changeNr).comments().entrySet()) {
+                    all.computeIfAbsent(entry.getKey(), key -> new ArrayList<>()).addAll(entry.getValue());
+                }
+                if (GerritSettings.getInstance().isLoginAndPasswordAvailable()) {
+                    for (Map.Entry<String, List<CommentInfo>> entry : gerritApi().changes().id(changeNr).drafts().entrySet()) {
+                        for (CommentInfo draft : entry.getValue()) {
+                            draft.author = null;
+                            all.computeIfAbsent(entry.getKey(), key -> new ArrayList<>()).add(draft);
+                        }
+                    }
+                }
+                return all;
+            } catch (RestApiException e) {
+                notifyError(e, "Failed to get Gerrit comments.", project);
+                return Collections.emptyMap();
+            }
+        };
+        accessGerrit(supplier, consumer, project);
+    }
+
+    /**
+     * @param consumer gets null when there is no diff, as for a file the base patch set does not have
+     */
+    public void getFileDiff(final int changeNr,
+                            final String revision,
+                            final String path,
+                            final int basePatchSet,
+                            final Project project,
+                            final Consumer<DiffInfo> consumer) {
+        Supplier<DiffInfo> supplier = () -> {
+            try {
+                // diff(int) names the parent of a merge commit, diff(String) the base to compare with
+                return gerritApi().changes().id(changeNr).revision(revision).file(path)
+                    .diff(Integer.toString(basePatchSet));
+            } catch (RestApiException e) {
+                return null;
             }
         };
         accessGerrit(supplier, consumer, project);
