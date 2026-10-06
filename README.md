@@ -4,6 +4,28 @@ gerrit-intellij-plugin
 [![Version](http://phpstorm.espend.de/badge/7272/version)](https://plugins.jetbrains.com/plugin/7272)
 [![Downloads](http://phpstorm.espend.de/badge/7272/downloads)](https://plugins.jetbrains.com/plugin/7272)
 
+About this fork
+---------------
+
+This is a fork of [uwolfer/gerrit-intellij-plugin](https://github.com/uwolfer/gerrit-intellij-plugin) by
+Maximilian Kroboth, on the branch `inline-comment-threads`. It adds to the upstream plugin:
+
+* Review comments shown in place in the diff, below the line they are on, as threads with replies, the way the
+  GitLab and GitHub reviews in the IDE show them. Reply, Done, edit and delete drafts, and start a comment from a "+"
+  in the gutter, all without a popup. Previous and Next walk the threads of a file.
+* Comments rendered as Markdown, as Gerrit's web UI shows them, each beside its author's avatar (initials).
+* "Group by" in the toolbar of the change list: by topic, or by the stack the changes' commits form.
+* Settings | Version Control | Gerrit | Diff switches the comments back to the upstream gutter icons and popups.
+
+It is built and installed like the upstream plugin: `./gradlew buildPlugin`, then "Install Plugin from Disk" with the
+zip in `build/distributions`. The plugin has the same id as the one on the JetBrains Marketplace, so an update from
+there replaces it.
+
+Files changed from upstream carry a "Modified" line in their header; new files carry their own copyright line. Both
+are under the Apache License 2.0, as the rest of the plugin. The fork additionally bundles
+[commonmark-java](https://github.com/commonmark/commonmark-java) (BSD 2-Clause License) and
+[autolink-java](https://github.com/robinst/autolink-java) (MIT License), whose licence texts ship inside their jars.
+
 Introduction
 -----------
 
