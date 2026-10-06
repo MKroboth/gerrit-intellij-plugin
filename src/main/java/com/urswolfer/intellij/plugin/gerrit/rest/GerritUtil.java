@@ -2,7 +2,8 @@
  * Copyright 2000-2011 JetBrains s.r.o.
  * Copyright 2013-2018 Urs Wolfer
  * Modified 2026 by Maximilian Kroboth: saving and deleting a draft comment can report a failure to the caller;
- * the change list asks for the commits it groups stacks by; comments of every patch set and file diffs are read.
+ * the change list asks for the commits it groups stacks by; comments of every patch set, file diffs, drafts and
+ * change messages are read.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,6 +34,7 @@ import com.google.gerrit.extensions.client.ListChangesOption;
 import com.google.gerrit.extensions.common.AccountInfo;
 import com.google.gerrit.extensions.common.ChangeInfo;
 import com.google.gerrit.extensions.common.ChangeInput;
+import com.google.gerrit.extensions.common.ChangeMessageInfo;
 import com.google.gerrit.extensions.common.MergePatchSetInput;
 import com.google.gerrit.extensions.common.CommentInfo;
 import com.google.gerrit.extensions.common.DiffInfo;
@@ -644,6 +646,22 @@ public final class GerritUtil {
             } catch (RestApiException e) {
                 notifyError(e, "Failed to get Gerrit comments.", project);
                 return Collections.emptyMap();
+            }
+        };
+        accessGerrit(supplier, consumer, project);
+    }
+
+    /**
+     * The messages of a change, the reviews with their votes and those of CI among them.
+     */
+    public void getChangeMessages(final int changeNr,
+                                  final Project project,
+                                  final Consumer<List<ChangeMessageInfo>> consumer) {
+        Supplier<List<ChangeMessageInfo>> supplier = () -> {
+            try {
+                return gerritApi().changes().id(changeNr).messages();
+            } catch (RestApiException e) {
+                return Collections.emptyList();
             }
         };
         accessGerrit(supplier, consumer, project);
