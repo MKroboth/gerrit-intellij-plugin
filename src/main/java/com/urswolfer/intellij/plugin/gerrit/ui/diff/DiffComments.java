@@ -1,5 +1,6 @@
 /*
  * Copyright 2026 Urs Wolfer
+ * Modified 2026 by Maximilian Kroboth: a "+" in the gutter starts a comment.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +21,7 @@ import com.google.gerrit.extensions.client.Comment;
 import com.google.gerrit.extensions.common.ChangeInfo;
 import com.google.gerrit.extensions.common.CommentInfo;
 import com.intellij.diff.util.Side;
+import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
@@ -86,6 +88,7 @@ final class DiffComments {
     private final Set<FoldRegion> unfolded = Collections.newSetFromMap(new WeakHashMap<>());
     // laid out as the settings and the account say now; one whose text did not fit its comments then is not
     private final Set<EditorEx> upToDate = new HashSet<>();
+    private final Map<EditorEx, Disposable> gutterIcons = new HashMap<>();
     private int localChanges;
     // in the order the icons are added in, each to the left of those on its line already
     private final List<ShownComment> comments = new ArrayList<>();
@@ -115,6 +118,7 @@ final class DiffComments {
     void addEditor(EditorEx editor, LineMapping mapping) {
         editors.put(editor, mapping);
         editor.putUserData(KEY, this);
+        gutterIcons.put(editor, AddCommentGutterIcon.install(editor, project));
     }
 
     void removeEditor(EditorEx editor) {
@@ -123,6 +127,10 @@ final class DiffComments {
         upToDate.remove(editor);
         editors.remove(editor);
         editor.putUserData(KEY, null);
+        Disposable gutterIcon = gutterIcons.remove(editor);
+        if (gutterIcon != null) {
+            Disposer.dispose(gutterIcon);
+        }
     }
 
     Iterable<EditorEx> getEditors() {
