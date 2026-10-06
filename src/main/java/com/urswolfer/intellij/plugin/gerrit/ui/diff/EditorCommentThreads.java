@@ -80,6 +80,7 @@ final class EditorCommentThreads implements CommentThreadPanel.Controller {
         this.filePath = filePath;
         this.side = side;
         this.inlays = new EditorCommentInlays(editor);
+        AddCommentGutterIcon.install(editor, this::canComment, line -> startThread(line, null));
     }
 
     void setComments(@NotNull Collection<CommentInfo> fileComments) {
