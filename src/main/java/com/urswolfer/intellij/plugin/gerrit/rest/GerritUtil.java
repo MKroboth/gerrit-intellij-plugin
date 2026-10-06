@@ -2,7 +2,7 @@
  * Copyright 2000-2011 JetBrains s.r.o.
  * Copyright 2013-2018 Urs Wolfer
  * Modified 2026 by Maximilian Kroboth: the change list asks for the commits it groups stacks by; the comments and
- * drafts of every patch set, file diffs and change messages are read.
+ * drafts of every patch set, file diffs, change messages and comment links are read.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,6 +35,7 @@ import com.google.gerrit.extensions.api.changes.ReviewerResult;
 import com.google.gerrit.extensions.api.changes.RevisionApi;
 import com.google.gerrit.extensions.api.changes.SubmitInput;
 import com.google.gerrit.extensions.api.projects.BranchInfo;
+import com.google.gerrit.extensions.api.projects.CommentLinkInfo;
 import com.google.gerrit.extensions.client.ListChangesOption;
 import com.google.gerrit.extensions.common.AccountInfo;
 import com.google.gerrit.extensions.common.ChangeInfo;
@@ -87,6 +88,8 @@ import org.jetbrains.annotations.VisibleForTesting;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collection;
@@ -686,6 +689,39 @@ public final class GerritUtil {
                 consumer.consume(comments);
             }
         }, project);
+    }
+
+    /**
+     * The "commentlink" sections of a project's configuration, inherited ones included. Whatever fails, the consumer
+     * gets what was read, so that comments are shown without the links rather than not at all; it is only logged.
+     */
+    public void getCommentLinks(final String projectName,
+                                final Project project,
+                                final Consumer<Map<String, CommentLinkInfo>> consumer) {
+        // read as plain JSON: the client's own parsing of a project's config needs a newer Gson than 2020.3 bundles
+        accessGerrit(() -> {
+            Map<String, CommentLinkInfo> links = new LinkedHashMap<>();
+            try {
+                JsonElement config = gerritApi(project).restClient().getRequest(
+                    "/projects/" + URLEncoder.encode(projectName, StandardCharsets.UTF_8).replace("+", "%20") + "/config");
+                JsonElement commentLinks = config != null && config.isJsonObject()
+                    ? config.getAsJsonObject().get("commentlinks") : null;
+                if (commentLinks != null && commentLinks.isJsonObject()) {
+                    for (Map.Entry<String, JsonElement> entry : commentLinks.getAsJsonObject().entrySet()) {
+                        if (!entry.getValue().isJsonObject()) continue;
+                        JsonObject json = entry.getValue().getAsJsonObject();
+                        CommentLinkInfo link = new CommentLinkInfo();
+                        link.match = json.has("match") ? json.get("match").getAsString() : null;
+                        link.link = json.has("link") ? json.get("link").getAsString() : null;
+                        link.enabled = json.has("enabled") ? json.get("enabled").getAsBoolean() : null;
+                        links.put(entry.getKey(), link);
+                    }
+                }
+            } catch (RestApiException | RuntimeException | LinkageError e) {
+                LOG.warn("Failed to read the comment links of " + projectName, e);
+            }
+            return links;
+        }, consumer, project);
     }
 
     /**

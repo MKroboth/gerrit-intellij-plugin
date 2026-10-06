@@ -1,5 +1,6 @@
 /*
  * Copyright 2026 Urs Wolfer
+ * Modified 2026 by Maximilian Kroboth: the threads link issue ids.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -280,6 +281,7 @@ public final class EditorComments implements Disposable {
             DiffComments diffComments = new DiffComments(project, change.change, parent, revision,
                 () -> disposed || editor.isDisposed());
             diffComments.addEditor(editor, mapping);
+            GerritCommentsDiffExtension.setCommentLinks(diffComments, project, change.change);
             updateAddCommentAction(diffComments);
             diffComments.addAll(commentsOf(change), revision);
             return diffComments;

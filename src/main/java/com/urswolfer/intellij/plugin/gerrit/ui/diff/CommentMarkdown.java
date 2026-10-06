@@ -26,6 +26,7 @@ import org.commonmark.node.FencedCodeBlock;
 import org.commonmark.node.Image;
 import org.commonmark.node.IndentedCodeBlock;
 import org.commonmark.node.Node;
+import org.commonmark.node.Text;
 import org.commonmark.parser.Parser;
 import org.commonmark.renderer.NodeRenderer;
 import org.commonmark.renderer.html.HtmlNodeRendererContext;
@@ -39,6 +40,8 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Comments as Gerrit's web UI shows them: Markdown, with GitHub's tables, strikethrough and bare links.
@@ -61,9 +64,40 @@ public final class CommentMarkdown {
 
     private CommentMarkdown() {}
 
+    /**
+     * A Gerrit "commentlink": text matching the pattern becomes a link built from the template, "$1" standing for its
+     * first group.
+     */
+    public static final class Link {
+        final Pattern pattern;
+        final String template;
+
+        public Link(@NotNull String match, @NotNull String template) {
+            this.pattern = Pattern.compile(match);
+            this.template = template;
+        }
+    }
+
     @NotNull
     public static String toHtml(@NotNull String markdown) {
         return RENDERER.render(PARSER.parse(markdown));
+    }
+
+    @NotNull
+    public static String toHtml(@NotNull String markdown, @NotNull List<Link> links) {
+        if (links.isEmpty()) {
+            return toHtml(markdown);
+        }
+        HtmlRenderer renderer = HtmlRenderer.builder()
+            .extensions(EXTENSIONS)
+            .escapeHtml(true)
+            .sanitizeUrls(true)
+            .softbreak("<br>")
+            .nodeRendererFactory(ImageAsLink::new)
+            .nodeRendererFactory(CodeBlockLines::new)
+            .nodeRendererFactory(context -> new LinkedText(context, links))
+            .build();
+        return renderer.render(PARSER.parse(markdown));
     }
 
     /**
@@ -115,6 +149,81 @@ public final class CommentMarkdown {
             }
             writer.tag("/pre");
             writer.line();
+        }
+    }
+
+    /**
+     * Text with what the comment links match made into links; not inside a link, and code is not text.
+     */
+    private static final class LinkedText implements NodeRenderer {
+        private static final Pattern GROUP = Pattern.compile("\\$(\\d)");
+
+        private final HtmlNodeRendererContext context;
+        private final List<Link> links;
+
+        LinkedText(HtmlNodeRendererContext context, List<Link> links) {
+            this.context = context;
+            this.links = links;
+        }
+
+        @Override
+        public Set<Class<? extends Node>> getNodeTypes() {
+            return Collections.singleton(Text.class);
+        }
+
+        @Override
+        public void render(Node node) {
+            String literal = ((Text) node).getLiteral();
+            HtmlWriter writer = context.getWriter();
+            if (insideLink(node)) {
+                writer.text(literal);
+                return;
+            }
+            int position = 0;
+            while (true) {
+                Matcher first = null;
+                Link firstLink = null;
+                for (Link link : links) {
+                    Matcher matcher = link.pattern.matcher(literal);
+                    if (matcher.find(position) && matcher.end() > matcher.start()
+                        && (first == null || matcher.start() < first.start())) {
+                        first = matcher;
+                        firstLink = link;
+                    }
+                }
+                if (first == null) {
+                    break;
+                }
+                writer.text(literal.substring(position, first.start()));
+                String url = context.urlSanitizer().sanitizeLinkUrl(expand(firstLink.template, first));
+                writer.tag("a", Collections.singletonMap("href", context.encodeUrl(url)));
+                writer.text(first.group());
+                writer.tag("/a");
+                position = first.end();
+            }
+            writer.text(literal.substring(position));
+        }
+
+        private static boolean insideLink(Node node) {
+            for (Node parent = node.getParent(); parent != null; parent = parent.getParent()) {
+                if (parent instanceof org.commonmark.node.Link) return true;
+            }
+            return false;
+        }
+
+        private static String expand(String template, Matcher match) {
+            Matcher group = GROUP.matcher(template);
+            StringBuilder url = new StringBuilder();
+            int position = 0;
+            while (group.find()) {
+                int number = Integer.parseInt(group.group(1));
+                url.append(template, position, group.start());
+                if (number <= match.groupCount() && match.group(number) != null) {
+                    url.append(match.group(number));
+                }
+                position = group.end();
+            }
+            return url.append(template.substring(position)).toString();
         }
     }
 

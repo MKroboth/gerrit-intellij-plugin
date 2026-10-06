@@ -1,7 +1,7 @@
 /*
  * Copyright 2026 Urs Wolfer
- * Modified 2026 by Maximilian Kroboth: renders comments as Markdown, with Quote, Previous and Next under each thread,
- * and names the patch set of a thread carried forward.
+ * Modified 2026 by Maximilian Kroboth: renders comments as Markdown with issue links, with Quote, Previous and Next
+ * under each thread, and names the patch set of a thread carried forward.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -103,6 +103,9 @@ final class CommentThreadPanel extends JPanel implements DataProvider {
         /** For a thread of an earlier patch set: which one, and whether its line changed since. */
         @Nullable
         String origin();
+
+        /** What turns an issue's id in a comment into a link. */
+        List<CommentMarkdown.Link> commentLinks();
 
         /** Whether the caret can be taken to the thread above or below, as in a diff. */
         boolean canWalk();
@@ -245,7 +248,7 @@ final class CommentThreadPanel extends JPanel implements DataProvider {
             header.setBorder(JBUI.Borders.empty(i == 0 ? 0 : 4, avatar == null ? shift : 0, 0, 0));
             add(header);
             if (folded) continue;
-            add(body(comment, shift));
+            add(body(comment, shift, actions.commentLinks()));
             if (CommentThreads.isDraft(comment) && actions.canComment()) {
                 ActionLink edit = link(GerritBundle.message("diff.edit"));
                 ActionLink remove = link(GerritBundle.message("diff.remove"));
@@ -316,7 +319,7 @@ final class CommentThreadPanel extends JPanel implements DataProvider {
      * simple() rather than the deprecated UIUtil.getHTMLEditorKit().
      */
     @SuppressWarnings("deprecation")
-    private static JComponent body(Comment comment, int shift) {
+    private static JComponent body(Comment comment, int shift, List<CommentMarkdown.Link> links) {
         // code keeps its indent as no-break spaces, which pasted into a file would not compile: whatever copies the
         // selection, the keymap of the IDE or the text component's own, takes it from here
         JEditorPane text = new JEditorPane() {
@@ -336,7 +339,7 @@ final class CommentThreadPanel extends JPanel implements DataProvider {
         text.setForeground(UIUtil.getLabelForeground());
         text.setBorder(JBUI.Borders.emptyLeft(shift));
         text.setText("<html><head><style>" + CommentMarkdown.style() + "</style></head><body>"
-            + wrapping(CommentMarkdown.toHtml(StringUtil.notNullize(comment.message))) + "</body></html>");
+            + wrapping(CommentMarkdown.toHtml(StringUtil.notNullize(comment.message), links)) + "</body></html>");
         text.addHyperlinkListener(BrowserHyperlinkListener.INSTANCE);
         text.setTransferHandler(new TransferHandler() {
             @Override

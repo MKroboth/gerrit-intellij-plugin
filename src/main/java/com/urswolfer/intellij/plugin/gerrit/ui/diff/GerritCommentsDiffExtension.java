@@ -1,7 +1,7 @@
 /*
  * Copyright 2026 Urs Wolfer
- * Modified 2026 by Maximilian Kroboth: loads the comments of earlier patch sets as well, puts bars to publish the
- * drafts and to step through a stack above the diff, and binds R to answer a thread.
+ * Modified 2026 by Maximilian Kroboth: loads the comments of earlier patch sets and the links of issue ids as well,
+ * puts bars to publish the drafts and to step through a stack above the diff, and binds R to answer a thread.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -145,6 +145,7 @@ public class GerritCommentsDiffExtension extends DiffExtension {
 
         DiffViewerBase viewerBase = (DiffViewerBase) viewer;
         DiffComments comments = new DiffComments(project, changeInfo, baseSide, revisionSide, viewerBase::isDisposed);
+        setCommentLinks(comments, project, changeInfo);
         TwosideTextDiffViewer twosideViewer = null;
         if (viewer instanceof TwosideTextDiffViewer) {
             twosideViewer = (TwosideTextDiffViewer) viewer;
@@ -279,6 +280,18 @@ public class GerritCommentsDiffExtension extends DiffExtension {
                         comments.addAll(filter(baseComments, baseSide), baseSide);
                     }
                 });
+        }
+    }
+
+    /** Now if they are known, otherwise once they are, which shows the threads anew. */
+    static void setCommentLinks(DiffComments comments, Project project, ChangeInfo changeInfo) {
+        List<CommentMarkdown.Link> links = CommentLinks.getInstance().get(project, changeInfo.project, () -> {
+            if (!comments.isDisposed()) {
+                setCommentLinks(comments, project, changeInfo);
+            }
+        });
+        if (links != null) {
+            comments.setCommentLinks(links);
         }
     }
 

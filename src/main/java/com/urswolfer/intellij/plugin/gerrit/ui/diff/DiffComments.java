@@ -1,8 +1,8 @@
 /*
  * Copyright 2026 Urs Wolfer
  * Modified 2026 by Maximilian Kroboth: a "+" in the gutter starts a comment, Quote, Previous and Next under each
- * thread, the threads of earlier patch sets show on the newer side, saving or removing a draft is announced, a key
- * answers the thread at the caret, and a diff opened for a thread scrolls to it.
+ * thread, the threads of earlier patch sets show on the newer side, issue ids are links, saving or removing a draft is
+ * announced, a key answers the thread at the caret, and a diff opened for a thread scrolls to it.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -98,6 +98,7 @@ final class DiffComments {
     private final Map<EditorEx, Disposable> gutterIcons = new HashMap<>();
     // by revision, those whose comments show on the newer side as well
     private final Map<String, EarlierPatchSet> earlierPatchSets = new HashMap<>();
+    private List<CommentMarkdown.Link> commentLinks = Collections.emptyList();
     // told when a draft was saved or removed here, which changes how many the change has
     private final List<Runnable> draftsListeners = new ArrayList<>();
     private int localChanges;
@@ -278,6 +279,12 @@ final class DiffComments {
     private static int editorLine(EditorEx editor, LineMapping mapping, ShownComment shownComment) {
         return Math.min(mapping.editorLineOf(shownComment.side, shownComment.line),
             editor.getDocument().getLineCount() - 1);
+    }
+
+    /** What the threads turn into links, which they are shown with anew. */
+    void setCommentLinks(List<CommentMarkdown.Link> links) {
+        commentLinks = links;
+        refreshThreads();
     }
 
     void addDraftsListener(Runnable listener) {
@@ -789,6 +796,11 @@ final class DiffComments {
                 return thread.root.exact
                     ? GerritBundle.message("diff.thread.patchSet", patchSet)
                     : GerritBundle.message("diff.thread.patchSet.moved", patchSet);
+            }
+
+            @Override
+            public List<CommentMarkdown.Link> commentLinks() {
+                return commentLinks;
             }
 
             @Override
