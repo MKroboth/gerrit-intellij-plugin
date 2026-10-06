@@ -1,7 +1,7 @@
 /*
  * Copyright 2026 Urs Wolfer
- * Modified 2026 by Maximilian Kroboth: renders comments as Markdown with issue links, with Quote, Previous and Next
- * under each thread, and names the patch set of a thread carried forward.
+ * Modified 2026 by Maximilian Kroboth: renders comments as Markdown with issue links and the fixes they suggest, with
+ * Quote, Previous and Next under each thread, and names the patch set of a thread carried forward.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,8 @@ package com.urswolfer.intellij.plugin.gerrit.ui.diff;
 
 import com.google.gerrit.extensions.client.Comment;
 import com.google.gerrit.extensions.common.AccountInfo;
+import com.google.gerrit.extensions.common.CommentInfo;
+import com.intellij.icons.AllIcons;
 import com.intellij.openapi.actionSystem.ActionManager;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.ide.CopyProvider;
@@ -54,6 +56,7 @@ import java.awt.event.MouseEvent;
 import java.awt.geom.RoundRectangle2D;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.IntSupplier;
@@ -106,6 +109,12 @@ final class CommentThreadPanel extends JPanel implements DataProvider {
 
         /** What turns an issue's id in a comment into a link. */
         List<CommentMarkdown.Link> commentLinks();
+
+        /** Whether a fix the comment suggests can be applied to the local copy: not on the base side of a diff. */
+        boolean canApplyFix(Comment comment);
+
+        /** Applies a fix the comment suggests to the local copy of its files, if they are those of its patch set. */
+        void applyFix(Comment comment, Fixes.Fix fix);
 
         /** Whether the caret can be taken to the thread above or below, as in a diff. */
         boolean canWalk();
@@ -249,6 +258,18 @@ final class CommentThreadPanel extends JPanel implements DataProvider {
             add(header);
             if (folded) continue;
             add(body(comment, shift, actions.commentLinks()));
+            List<Fixes.Fix> fixes = comment instanceof CommentInfo && actions.canApplyFix(comment)
+                ? Fixes.of((CommentInfo) comment) : Collections.emptyList();
+            if (!fixes.isEmpty()) {
+                List<JComponent> fixLinks = new ArrayList<>();
+                for (Fixes.Fix fix : fixes) {
+                    ActionLink apply = link(GerritBundle.message("fix.apply", fix.description));
+                    apply.setIcon(AllIcons.Actions.IntentionBulb);
+                    apply.addActionListener(e -> actions.applyFix(comment, fix));
+                    fixLinks.add(apply);
+                }
+                add(links(shift, fixLinks.toArray(new JComponent[0])));
+            }
             if (CommentThreads.isDraft(comment) && actions.canComment()) {
                 ActionLink edit = link(GerritBundle.message("diff.edit"));
                 ActionLink remove = link(GerritBundle.message("diff.remove"));

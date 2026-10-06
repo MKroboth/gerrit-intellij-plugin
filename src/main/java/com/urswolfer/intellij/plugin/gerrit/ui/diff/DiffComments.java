@@ -1,8 +1,9 @@
 /*
  * Copyright 2026 Urs Wolfer
  * Modified 2026 by Maximilian Kroboth: a "+" in the gutter starts a comment, Quote, Previous and Next under each
- * thread, the threads of earlier patch sets show on the newer side, issue ids are links, saving or removing a draft is
- * announced, a key answers the thread at the caret, and a diff opened for a thread scrolls to it.
+ * thread, the threads of earlier patch sets show on the newer side, issue ids are links, suggested fixes apply to the
+ * local copy, saving or removing a draft is announced, a key answers the thread at the caret, and a diff opened for a
+ * thread scrolls to it.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -801,6 +802,16 @@ final class DiffComments {
             @Override
             public List<CommentMarkdown.Link> commentLinks() {
                 return commentLinks;
+            }
+
+            @Override
+            public boolean canApplyFix(Comment comment) {
+                return side.side == com.google.gerrit.extensions.client.Side.REVISION;
+            }
+
+            @Override
+            public void applyFix(Comment comment, Fixes.Fix fix) {
+                LocalFix.apply(project, changeInfo, side.revisionId, fix);
             }
 
             @Override

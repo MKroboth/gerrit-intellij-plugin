@@ -2,7 +2,7 @@
  * Copyright 2000-2011 JetBrains s.r.o.
  * Copyright 2013-2018 Urs Wolfer
  * Modified 2026 by Maximilian Kroboth: the change list asks for the commits it groups stacks by; the comments and
- * drafts of every patch set, file diffs, change messages and comment links are read.
+ * drafts of every patch set, file diffs, change messages, comment links and file texts are read.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -62,6 +62,7 @@ import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.util.ThrowableComputable;
 import com.intellij.util.Consumer;
 import com.intellij.util.ExceptionUtil;
@@ -89,6 +90,7 @@ import org.jetbrains.annotations.VisibleForTesting;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URLEncoder;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -689,6 +691,29 @@ public final class GerritUtil {
                 consumer.consume(comments);
             }
         }, project);
+    }
+
+    /**
+     * A file as it is in a patch set, with the line separators of a document; null when it is not there or cannot be
+     * read, which is only logged.
+     */
+    public void getFileTextQuietly(final int changeNr,
+                                   final String revision,
+                                   final String path,
+                                   final Charset charset,
+                                   final Project project,
+                                   final Consumer<String> consumer) {
+        accessGerrit(() -> {
+            try {
+                String text = StringUtil.convertLineSeparators(
+                    new String(getFileContent(changeNr, revision, path, project), charset));
+                // a byte order mark, which the document of the file does not have
+                return text.startsWith("\uFEFF") ? text.substring(1) : text;
+            } catch (RestApiException | IOException | RuntimeException e) {
+                LOG.info("Failed to read " + path + " of change " + changeNr + " at " + revision, e);
+                return null;
+            }
+        }, consumer, project);
     }
 
     /**
