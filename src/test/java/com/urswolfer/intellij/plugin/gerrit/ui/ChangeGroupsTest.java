@@ -16,8 +16,10 @@
 
 package com.urswolfer.intellij.plugin.gerrit.ui;
 
+import com.google.gerrit.extensions.common.AccountInfo;
 import com.google.gerrit.extensions.common.ChangeInfo;
 import com.google.gerrit.extensions.common.CommitInfo;
+import com.google.gerrit.extensions.common.LabelInfo;
 import com.google.gerrit.extensions.common.RevisionInfo;
 import org.junit.Assert;
 import org.testng.annotations.Test;
@@ -122,6 +124,79 @@ public class ChangeGroupsTest {
         ChangeInfo top = change(2, "top", "RL-132", "b1", "a1");
 
         Assert.assertEquals(Arrays.asList(2, 1), numbers(ChangeGroups.byTopic(Arrays.asList(base, top)).get(0)));
+    }
+
+    @Test
+    public void testIssueComesFromTheCommitMessageTrailer() {
+        ChangeInfo first = change(1, "first", null, "a1");
+        first.revisions.get("a1").commit.message = "first\n\nBody.\n\nIssue: RL-132\nChange-Id: I1\n";
+        ChangeInfo second = change(2, "second", null, "b1");
+        second.revisions.get("b1").commit.message = "second\n\nIssue: RL-132\n";
+        ChangeInfo none = change(3, "none", null, "c1");
+        none.revisions.get("c1").commit.message = "none\n\nNo trailer here.\n";
+
+        List<ChangeGroups.Group> groups = ChangeGroups.byIssue(Arrays.asList(first, none, second));
+
+        Assert.assertEquals(Arrays.asList("RL-132 · 2 changes", "No issue · 1 change"),
+            groups.stream().map(ChangeGroups.Group::getTitle).collect(Collectors.toList()));
+    }
+
+    @Test
+    public void testIssueInTheBodyIsNotATrailer() {
+        ChangeInfo change = change(1, "subject", null, "a1");
+        change.revisions.get("a1").commit.message = "subject\n\nSee Issue: RL-1 for why.\n";
+
+        Assert.assertEquals("No issue · 1 change", ChangeGroups.byIssue(Collections.singletonList(change)).get(0).getTitle());
+    }
+
+    @Test
+    public void testHashtagIsTheFirstInOrder() {
+        ChangeInfo change = change(1, "subject", null, "a1");
+        change.hashtags = Arrays.asList("zeta", "alpha");
+        ChangeInfo untagged = change(2, "untagged", null, "b1");
+
+        List<ChangeGroups.Group> groups = ChangeGroups.byHashtag(Arrays.asList(change, untagged));
+
+        Assert.assertEquals(Arrays.asList("#alpha · 1 change", "No hashtag · 1 change"),
+            groups.stream().map(ChangeGroups.Group::getTitle).collect(Collectors.toList()));
+    }
+
+    @Test
+    public void testOwnerIsTheOwnersName() {
+        ChangeInfo rita = change(1, "one", null, "a1");
+        rita.owner = new AccountInfo("Rita Reviewer", "rita@example.org");
+        ChangeInfo max = change(2, "two", null, "b1");
+        max.owner = new AccountInfo("Max", "max@example.org");
+
+        Assert.assertEquals(Arrays.asList("Rita Reviewer · 1 change", "Max · 1 change"),
+            ChangeGroups.byOwner(Arrays.asList(rita, max)).stream().map(ChangeGroups.Group::getTitle)
+                .collect(Collectors.toList()));
+    }
+
+    @Test
+    public void testStatusCountsApprovalsFailuresAndOpenThreads() {
+        ChangeInfo approved = change(1, "approved", null, "a1");
+        approved.labels = Collections.singletonMap("Code-Review", label(true, false));
+        ChangeInfo failing = change(2, "failing", null, "b1");
+        failing.labels = Collections.singletonMap("Verified", label(false, true));
+        failing.unresolvedCommentCount = 2;
+        ChangeInfo plain = change(3, "plain", null, "c1");
+        plain.unresolvedCommentCount = 1;
+
+        Assert.assertEquals("1/3 approved · 1 failing · 3 open threads",
+            ChangeGroups.statusOf(Arrays.asList(approved, failing, plain)));
+    }
+
+    @Test
+    public void testStatusLeavesOutWhatIsZero() {
+        Assert.assertEquals("0/1 approved", ChangeGroups.statusOf(Collections.singletonList(change(1, "x", null, "a1"))));
+    }
+
+    private static LabelInfo label(boolean approved, boolean rejected) {
+        LabelInfo label = new LabelInfo();
+        label.approved = approved ? new AccountInfo(1) : null;
+        label.rejected = rejected ? new AccountInfo(1) : null;
+        return label;
     }
 
     private static List<Integer> numbers(ChangeGroups.Group group) {

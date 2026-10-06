@@ -18,6 +18,7 @@ package com.urswolfer.intellij.plugin.gerrit.ui;
 
 import com.google.gerrit.extensions.common.ChangeInfo;
 import com.google.gerrit.extensions.common.CommitInfo;
+import com.google.gerrit.extensions.common.LabelInfo;
 import com.google.gerrit.extensions.common.RevisionInfo;
 import com.intellij.openapi.util.text.StringUtil;
 import org.jetbrains.annotations.NotNull;
@@ -34,14 +35,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
- * The listed changes grouped by topic, or by the stack their commits form.
+ * The listed changes grouped by topic, issue, hashtag or owner, or by the stack their commits form.
  *
  * A stack is found from the listed changes alone: a change whose current commit has the commit of any patch set of
  * another listed change as its parent sits on that change, also when that patch set is no longer the current one.
  */
 public final class ChangeGroups {
+
+    private static final Pattern ISSUE_TRAILER = Pattern.compile("Issue:\\s*(\\S+)");
 
     private ChangeGroups() {}
 
@@ -125,31 +131,109 @@ public final class ChangeGroups {
 
     @NotNull
     public static List<Group> byTopic(@NotNull List<ChangeInfo> changes) {
+        return byKey(changes, change -> StringUtil.nullize(change.topic), "topic", "", "No topic");
+    }
+
+    /**
+     * By the "Issue:" trailer of the current commit's message, as a YouTrack or Jira workflow writes it.
+     */
+    @NotNull
+    public static List<Group> byIssue(@NotNull List<ChangeInfo> changes) {
+        return byKey(changes, ChangeGroups::issueOf, "issue", "", "No issue");
+    }
+
+    /**
+     * By the first hashtag in alphabetical order: a change with several is listed once.
+     */
+    @NotNull
+    public static List<Group> byHashtag(@NotNull List<ChangeInfo> changes) {
+        return byKey(changes, change -> change.hashtags == null || change.hashtags.isEmpty()
+            ? null : Collections.min(change.hashtags), "hashtag", "#", "No hashtag");
+    }
+
+    @NotNull
+    public static List<Group> byOwner(@NotNull List<ChangeInfo> changes) {
+        return byKey(changes, change -> change.owner == null ? null
+            : StringUtil.nullize(change.owner.name != null ? change.owner.name : change.owner.username),
+            "owner", "", "No owner");
+    }
+
+    private static List<Group> byKey(List<ChangeInfo> changes, Function<ChangeInfo, String> keyOf, String kind,
+                                     String titlePrefix, String remainder) {
         Map<ChangeInfo, ChangeInfo> parents = findParents(changes);
         Map<ChangeInfo, Integer> depths = depths(changes, parents);
 
-        Map<String, List<ChangeInfo>> byTopic = new LinkedHashMap<>();
-        List<ChangeInfo> withoutTopic = new ArrayList<>();
+        Map<String, List<ChangeInfo>> byKey = new LinkedHashMap<>();
+        List<ChangeInfo> withoutKey = new ArrayList<>();
         for (ChangeInfo change : changes) {
-            if (StringUtil.isEmpty(change.topic)) {
-                withoutTopic.add(change);
+            String key = keyOf.apply(change);
+            if (key == null) {
+                withoutKey.add(change);
             } else {
-                byTopic.computeIfAbsent(change.topic, key -> new ArrayList<>()).add(change);
+                byKey.computeIfAbsent(key, k -> new ArrayList<>()).add(change);
             }
         }
 
         List<Group> groups = new ArrayList<>();
-        for (Map.Entry<String, List<ChangeInfo>> entry : byTopic.entrySet()) {
+        for (Map.Entry<String, List<ChangeInfo>> entry : byKey.entrySet()) {
             List<ChangeInfo> members = entry.getValue();
             sortTopFirst(members, changes, depths);
-            groups.add(new Group("topic:" + entry.getKey(), entry.getKey() + " · " + count(members.size()),
-                members, Collections.emptyMap()));
+            groups.add(new Group(kind + ":" + entry.getKey(),
+                titlePrefix + entry.getKey() + " · " + count(members.size()), members, Collections.emptyMap()));
         }
-        if (!withoutTopic.isEmpty()) {
-            groups.add(new Group("topic:", "No topic · " + count(withoutTopic.size()), withoutTopic,
+        if (!withoutKey.isEmpty()) {
+            groups.add(new Group(kind + ":", remainder + " · " + count(withoutKey.size()), withoutKey,
                 Collections.emptyMap()));
         }
         return groups;
+    }
+
+    /**
+     * Where a group of changes stands: how many have their Code-Review approval, how many fail verification, and how
+     * many threads are open. What is zero is left out, the approvals excepted.
+     */
+    @NotNull
+    public static String statusOf(@NotNull List<ChangeInfo> changes) {
+        int approved = 0;
+        int failing = 0;
+        int openThreads = 0;
+        for (ChangeInfo change : changes) {
+            if (hasLabel(change, "Code-Review", true)) approved++;
+            if (hasLabel(change, "Verified", false)) failing++;
+            if (change.unresolvedCommentCount != null) openThreads += change.unresolvedCommentCount;
+        }
+        StringBuilder status = new StringBuilder(approved + "/" + changes.size() + " approved");
+        if (failing > 0) status.append(" · ").append(failing).append(" failing");
+        if (openThreads > 0) {
+            status.append(" · ").append(openThreads).append(openThreads == 1 ? " open thread" : " open threads");
+        }
+        return status.toString();
+    }
+
+    private static boolean hasLabel(ChangeInfo change, String name, boolean approved) {
+        LabelInfo label = change.labels != null ? change.labels.get(name) : null;
+        return label != null && (approved ? label.approved != null : label.rejected != null);
+    }
+
+    @Nullable
+    static String issueOf(ChangeInfo change) {
+        String message = commitMessage(change);
+        if (message == null) return null;
+        String[] paragraphs = message.trim().split("\\n\\s*\\n");
+        for (String line : paragraphs[paragraphs.length - 1].split("\\n")) {
+            Matcher matcher = ISSUE_TRAILER.matcher(line.trim());
+            if (matcher.matches()) {
+                return matcher.group(1);
+            }
+        }
+        return null;
+    }
+
+    @Nullable
+    private static String commitMessage(ChangeInfo change) {
+        if (change.revisions == null || change.currentRevision == null) return null;
+        RevisionInfo revision = change.revisions.get(change.currentRevision);
+        return revision != null && revision.commit != null ? revision.commit.message : null;
     }
 
     private static Map<ChangeInfo, ChangeInfo> findParents(List<ChangeInfo> changes) {

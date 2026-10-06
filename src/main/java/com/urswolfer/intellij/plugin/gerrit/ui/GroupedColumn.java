@@ -83,6 +83,8 @@ final class GroupedColumn<A> extends ColumnInfo<ChangeInfo, A> {
                         protected void customizeCellRenderer(JTable table, @Nullable Object value, boolean selected,
                                                              boolean hasFocus, int row, int column) {
                             append(groupRow.getGroup().getTitle(), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES);
+                            append("   " + ChangeGroups.statusOf(groupRow.getGroup().getChanges()),
+                                SimpleTextAttributes.GRAYED_ATTRIBUTES);
                         }
                     };
                 default:

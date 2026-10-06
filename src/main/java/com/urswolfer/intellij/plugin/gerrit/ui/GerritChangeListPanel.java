@@ -30,6 +30,7 @@ import com.google.gerrit.extensions.common.LabelInfo;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.BrowserUtil;
 import com.intellij.openapi.actionSystem.ActionPlaces;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.options.ShowSettingsUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.ui.PopupHandler;
@@ -79,6 +80,8 @@ import java.util.TreeSet;
  * @author Urs Wolfer
  */
 public class GerritChangeListPanel extends JPanel {
+    private static final int MAX_GROUPED_CHANGES = 500;
+
     private final SelectedRevisions selectedRevisions;
     private final GerritSelectRevisionInfoColumn selectRevisionInfoColumn;
     private final GerritSettings gerritSettings;
@@ -181,6 +184,7 @@ public class GerritChangeListPanel extends JPanel {
                 }
                 listedQuery = query;
                 setChanges(changeInfos);
+                loadRestForGroups();
                 // a commit without a change is the usual reason for an empty lookup, a failed query the other
                 setupEmptyTableHint(lookup ? "No change found for the selected commits. " : "No changes to display. ");
                 // at its current patch set, which reviews and the other actions go to
@@ -307,6 +311,7 @@ public class GerritChangeListPanel extends JPanel {
         this.changes.addAll(changes);
         if (grouping != ChangeGrouping.NONE) {
             updateRows();
+            loadRestForGroups();
             return;
         }
         // did not find another way to update the scrollbar after adding more changes...
@@ -341,6 +346,24 @@ public class GerritChangeListPanel extends JPanel {
             replacingChanges = false;
         }
         reselect(previouslySelected);
+        loadRestForGroups();
+    }
+
+    /**
+     * Groups are wrong while part of the list is still on the server: a stack lacks its middle and shows as two. So
+     * while grouped, the list loads the rest of its pages, up to a bound. The next page is asked for after the proxy
+     * has handed out this one, as it skips a request while a load is running.
+     */
+    private void loadRestForGroups() {
+        LoadChangesProxy proxy = loadChangesProxy;
+        if (grouping == ChangeGrouping.NONE || proxy == null || changes.size() >= MAX_GROUPED_CHANGES) {
+            return;
+        }
+        ApplicationManager.getApplication().invokeLater(() -> proxy.getNextPage(more -> {
+            if (proxy == loadChangesProxy) {
+                addChanges(more);
+            }
+        }));
     }
 
     private boolean isGroupRow(int row) {
@@ -387,9 +410,7 @@ public class GerritChangeListPanel extends JPanel {
     }
 
     private List<ChangeInfo> buildRows() {
-        List<ChangeGroups.Group> groups = grouping == ChangeGrouping.TOPIC
-            ? ChangeGroups.byTopic(changes)
-            : ChangeGroups.byStack(changes);
+        List<ChangeGroups.Group> groups = groupsOf(changes);
         List<ChangeInfo> rows = new ArrayList<>();
         stackPositions.clear();
         for (ChangeGroups.Group group : groups) {
@@ -406,6 +427,21 @@ public class GerritChangeListPanel extends JPanel {
             }
         }
         return rows;
+    }
+
+    private List<ChangeGroups.Group> groupsOf(List<ChangeInfo> changes) {
+        switch (grouping) {
+            case TOPIC:
+                return ChangeGroups.byTopic(changes);
+            case ISSUE:
+                return ChangeGroups.byIssue(changes);
+            case HASHTAG:
+                return ChangeGroups.byHashtag(changes);
+            case OWNER:
+                return ChangeGroups.byOwner(changes);
+            default:
+                return ChangeGroups.byStack(changes);
+        }
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})

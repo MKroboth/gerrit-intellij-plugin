@@ -21,8 +21,11 @@ package com.urswolfer.intellij.plugin.gerrit.ui;
  */
 public enum ChangeGrouping {
     NONE("None"),
+    STACK("Stack"),
     TOPIC("Topic"),
-    STACK("Stack");
+    ISSUE("Issue"),
+    HASHTAG("Hashtag"),
+    OWNER("Owner");
 
     private final String label;
 
